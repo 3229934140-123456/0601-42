@@ -175,3 +175,22 @@ export interface ViewerTrendPoint {
   time: string;
   viewers: number;
 }
+
+export type TimelineType =
+  | 'pinned_comment'
+  | 'product_start'
+  | 'oral_broadcast'
+  | 'risk_alert'
+  | 'risk_note'
+  | 'operator_conclusion';
+
+export interface TimelineItem {
+  id: string;
+  type: TimelineType;
+  title: string;
+  description: string;
+  timestamp: string;
+  targetPage: string;
+  targetId?: string;
+  level?: string;
+}

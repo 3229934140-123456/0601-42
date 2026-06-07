@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -41,6 +41,12 @@ import {
   formatTime,
   getStatusText,
 } from '@/utils/format';
+import {
+  generateTimeline,
+  getTimelineTypeIcon,
+  getTimelineTypeColor,
+  getTimelineTypeBgColor,
+} from '@/utils/timeline';
 import { cn } from '@/lib/utils';
 import type { ViewerTrendPoint } from '@/types';
 
@@ -74,6 +80,12 @@ const LiveDetail = () => {
   const roomId = id || currentRoomId;
   const room = channelsData.find((c) => c.id === roomId);
 
+  useEffect(() => {
+    if (id && id !== currentRoomId) {
+      setCurrentRoomId(id);
+    }
+  }, [id, currentRoomId, setCurrentRoomId]);
+
   const [timeRange, setTimeRange] = useState<'1h' | '3h' | '6h' | 'all'>('1h');
   const [isEditingConclusion, setIsEditingConclusion] = useState(false);
   const [conclusionInput, setConclusionInput] = useState(
@@ -88,6 +100,14 @@ const LiveDetail = () => {
   const oralBroadcasts = getRoomOralBroadcasts(roomId);
   const risks = getRoomRisks(roomId);
   const pendingRisks = getPendingRisksCount(roomId);
+
+  const timeline = generateTimeline({
+    pinnedComments,
+    products,
+    oralBroadcasts,
+    risks,
+    operatorConclusion: operatorConclusions[roomId],
+  });
 
   const stats = useMemo(() => {
     if (!room) return null;
@@ -140,6 +160,20 @@ const LiveDetail = () => {
   const handleSaveConclusion = () => {
     setOperatorConclusion(roomId, conclusionInput);
     setIsEditingConclusion(false);
+  };
+
+  const handleTimelineClick = (item: {
+    targetPage: string;
+    targetId?: string;
+  }) => {
+    const { targetPage, targetId } = item;
+    if (targetPage === 'live') {
+      navigate(`/live/${roomId}`);
+    } else if (targetId) {
+      navigate(`/${targetPage}/${roomId}`);
+    } else {
+      navigate(`/${targetPage}/${roomId}`);
+    }
   };
 
   if (!room) {
@@ -596,6 +630,62 @@ const LiveDetail = () => {
                   </p>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-bg-secondary rounded-xl border border-border p-4">
+        <h3 className="text-base font-semibold text-text-primary mb-4 flex items-center gap-2">
+          <Clock size={18} className="text-accent" />
+          运营时间线
+          <span className="text-xs font-normal text-text-tertiary ml-2">
+            共 {timeline.length} 个事件
+          </span>
+        </h3>
+        <div className="relative">
+          <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-border" />
+          <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+            {timeline.map((item, index) => (
+              <div
+                key={item.id}
+                onClick={() => handleTimelineClick(item)}
+                className="relative pl-10 cursor-pointer group"
+              >
+                <div
+                  className={cn(
+                    'absolute left-2 top-1 w-5 h-5 rounded-full flex items-center justify-center text-xs border-2 border-bg-secondary z-10',
+                    getTimelineTypeBgColor(item.type, item.level)
+                  )}
+                  style={{ left: '12px' }}
+                >
+                  <span className={getTimelineTypeColor(item.type, item.level)}>
+                    {getTimelineTypeIcon(item.type)}
+                  </span>
+                </div>
+                <div
+                  className={cn(
+                    'p-3 rounded-lg bg-bg-primary border border-border transition-all group-hover:border-accent/30 group-hover:bg-accent/5'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm font-medium text-text-primary">
+                      {item.title}
+                    </p>
+                    <span className="text-xs text-text-tertiary whitespace-nowrap">
+                      {formatTime(item.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-text-secondary mt-1 line-clamp-2">
+                    {item.description}
+                  </p>
+                </div>
+              </div>
+            ))}
+            {timeline.length === 0 && (
+              <div className="text-center py-8">
+                <p className="text-sm text-text-tertiary">暂无时间线事件</p>
+              </div>
             )}
           </div>
         </div>

@@ -19,11 +19,10 @@ import {
   todayStaff,
   formatShiftTime,
   getStaffResponsibleRooms,
-  getStaffPendingRisks,
 } from '@/data/schedule';
 import { channels } from '@/data/channels';
 import { cn } from '@/lib/utils';
-import type { Staff } from '@/types';
+import type { Staff, Risk } from '@/types';
 
 const SchedulePage = () => {
   const channelsData = useAppStore((state) => state.channels);
@@ -33,6 +32,20 @@ const SchedulePage = () => {
   const getHighestRiskLevel = useAppStore(
     (state) => state.getHighestRiskLevel
   );
+  const getRoomRisks = useAppStore((state) => state.getRoomRisks);
+  const updateRiskStatus = useAppStore((state) => state.updateRiskStatus);
+
+  const allPendingRisks: (Risk & { roomId: string })[] = [];
+  channelsData.forEach((room) => {
+    const risks = getRoomRisks(room.id);
+    risks
+      .filter((r) => r.status === 'pending' || r.status === 'processing')
+      .forEach((r) => {
+        allPendingRisks.push({ ...r, roomId: room.id });
+      });
+  });
+
+  const unassignedRisks = allPendingRisks.filter((r) => !r.handler);
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
@@ -94,8 +107,13 @@ const SchedulePage = () => {
     staffResponsibleRooms.includes(c.id)
   );
   const staffPendingRisks = selectedStaff
-    ? getStaffPendingRisks(selectedStaff.id)
+    ? allPendingRisks.filter((r) => r.handler === selectedStaff.name)
     : [];
+
+  const handleAssignRisk = (risk: Risk & { roomId: string }) => {
+    if (!selectedStaff) return;
+    updateRiskStatus(risk.roomId, risk.id, risk.status, selectedStaff.name);
+  };
 
   const riskLevelColors: Record<string, string> = {
     critical: 'bg-red-500',
@@ -253,12 +271,7 @@ const SchedulePage = () => {
             ) : (
               <div className="grid grid-cols-3 gap-4">
                 {['早班', '中班', '晚班'].map((shiftName, idx) => {
-                  const shiftStaff = todayStaff.filter((s) => {
-                    const hour = parseInt(s.shift.split(':')[0]);
-                    if (idx === 0) return hour >= 6 && hour < 14;
-                    if (idx === 1) return hour >= 14 && hour < 22;
-                    return hour >= 22 || hour < 6;
-                  });
+                  const shiftStaff = todayStaff.filter((s) => s.shift === shiftName);
 
                   const shiftTimes = [
                     '06:00 - 14:00',
@@ -332,8 +345,11 @@ const SchedulePage = () => {
             </h3>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 flex-1 overflow-y-auto">
               {staffList.map((staff) => {
-                const pendingRisks = getStaffPendingRisks(staff.id).length;
-                const highestRisk = getStaffPendingRisks(staff.id)[0]?.level;
+                const staffRisks = allPendingRisks.filter(
+                  (r) => r.handler === staff.name
+                );
+                const pendingRisks = staffRisks.length;
+                const highestRisk = staffRisks[0]?.level;
 
                 return (
                   <div
@@ -545,7 +561,7 @@ const SchedulePage = () => {
                     <p className="text-sm">暂无待处理告警</p>
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
                     {staffPendingRisks.slice(0, 5).map((risk) => {
                       const room = channels.find(
                         (c) => c.id === risk.roomId
@@ -577,6 +593,64 @@ const SchedulePage = () => {
                     {staffPendingRisks.length > 5 && (
                       <p className="text-xs text-text-tertiary text-center pt-2">
                         还有 {staffPendingRisks.length - 5} 条告警...
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bg-secondary rounded-xl border border-border p-4">
+                <h3 className="text-base font-semibold text-text-primary mb-4 flex items-center gap-2">
+                  <User size={18} className="text-blue-500" />
+                  可分派告警
+                  <span className="ml-auto text-sm font-normal text-text-secondary">
+                    {unassignedRisks.length} 条未分派
+                  </span>
+                </h3>
+                {unassignedRisks.length === 0 ? (
+                  <div className="text-center py-6 text-text-tertiary">
+                    <CheckCircle size={32} className="mx-auto mb-2 opacity-50 text-green-500" />
+                    <p className="text-sm">所有告警已分派</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {unassignedRisks.slice(0, 6).map((risk) => {
+                      const room = channels.find(
+                        (c) => c.id === risk.roomId
+                      );
+                      return (
+                        <div
+                          key={risk.id}
+                          className="p-3 rounded-lg bg-bg-primary border border-border"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm text-text-primary font-medium line-clamp-1">
+                              {risk.title}
+                            </p>
+                            <span
+                              className={cn(
+                                'shrink-0 px-1.5 py-0.5 rounded text-xs text-white',
+                                riskLevelColors[risk.level]
+                              )}
+                            >
+                              {getRiskLevelText(risk.level)}
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-tertiary mt-1">
+                            {room?.title}
+                          </p>
+                          <button
+                            onClick={() => handleAssignRisk(risk)}
+                            className="mt-2 w-full py-1.5 rounded-lg bg-accent/10 text-accent text-xs font-medium hover:bg-accent/20 transition-colors"
+                          >
+                            分派给 {selectedStaff?.name}
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {unassignedRisks.length > 6 && (
+                      <p className="text-xs text-text-tertiary text-center pt-2">
+                        还有 {unassignedRisks.length - 6} 条告警...
                       </p>
                     )}
                   </div>

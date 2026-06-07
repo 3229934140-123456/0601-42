@@ -8,7 +8,9 @@ import {
   getRiskLevelText,
   getRiskTypeText,
   getStatusText,
+  formatTime,
 } from './format';
+import { generateTimeline, getTimelineTypeIcon } from './timeline';
 
 interface ExportReportOptions {
   room: LiveRoom;
@@ -48,6 +50,14 @@ export const generateLiveReport = (options: ExportReportOptions): string => {
   const resolvedRisks = risks.filter(
     (r) => r.status === 'resolved' || r.status === 'false_alarm'
   ).length;
+
+  const timeline = generateTimeline({
+    pinnedComments,
+    products,
+    oralBroadcasts,
+    risks,
+    operatorConclusion,
+  });
 
   const now = new Date().toLocaleString('zh-CN', {
     year: 'numeric',
@@ -155,6 +165,24 @@ ${
      发现时间：${formatDate(r.timestamp)}
      ${r.handler ? `处理人：${r.handler}` : ''}${r.handleTime ? ` | 处理时间：${formatDate(r.handleTime)}` : ''}
      处理备注：${r.notes.length > 0 ? r.notes[0].content : '暂无'}`
+        )
+        .join('\n\n')
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+【运营时间线】
+  共 ${timeline.length} 个关键事件
+  ─────────────────────────────────────────────────────
+${
+  timeline.length === 0
+    ? '  暂无时间线事件'
+    : timeline
+        .map(
+          (item, i) =>
+            `  ${i + 1}. ${getTimelineTypeIcon(item.type)} ${item.title}
+     时间：${formatDate(item.timestamp)}
+     内容：${item.description}`
         )
         .join('\n\n')
 }

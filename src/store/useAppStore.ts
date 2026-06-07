@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Comment, RiskAlert, OralBroadcast, ViewerTrendPoint } from '@/types';
+import type { Comment, RiskAlert, OralBroadcast, ViewerTrendPoint, Product } from '@/types';
 import { channels } from '@/data/channels';
 import { roomCommentsData, roomFrequentComments } from '@/data/comments';
 import { roomProductsData, roomOralData } from '@/data/products';
@@ -24,6 +24,8 @@ interface AppState {
   updateRiskStatus: (roomId: string, riskId: string, status: string, handler?: string) => void;
   addOralBroadcast: (roomId: string, oral: Omit<OralBroadcast, 'id' | 'timestamp' | 'roomId'>) => void;
   updateProductStatus: (roomId: string, productId: string, status: string) => void;
+  addComment: (roomId: string, content: string, userName?: string) => void;
+  addProduct: (roomId: string, product: Partial<Product>) => void;
   toggleCompareRoom: (roomId: string) => void;
   setOperatorConclusion: (roomId: string, conclusion: string) => void;
   
@@ -143,6 +145,46 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
         roomProductsData[roomId] = products;
       }
+      return {};
+    }),
+
+  addComment: (roomId: string, content: string, userName?: string) =>
+    set(() => {
+      const newComment: Comment = {
+        id: `comment-${Date.now()}`,
+        userId: 'manual',
+        userName: userName || '运营手动添加',
+        userAvatar: 'https://i.pravatar.cc/150?img=10',
+        content,
+        timestamp: new Date().toISOString(),
+        type: content.includes('?') || content.includes('？') ? 'question' : 'normal',
+        isPinned: false,
+        likeCount: 0,
+        isHighlighted: false,
+      };
+      roomCommentsData[roomId] = [newComment, ...(roomCommentsData[roomId] || [])];
+      return {};
+    }),
+
+  addProduct: (roomId: string, product: Partial<Product>) =>
+    set(() => {
+      const products = roomProductsData[roomId] || [];
+      const newProduct: Product = {
+        id: `product-${Date.now()}`,
+        name: product.name || '新商品',
+        imageUrl: product.imageUrl || `https://picsum.photos/seed/newproduct/200/200`,
+        price: product.price || 99,
+        originalPrice: product.originalPrice,
+        stock: product.stock || 100,
+        salesVolume: 0,
+        clickCount: 0,
+        status: 'pending',
+        duration: product.duration || 10,
+        order: products.length + 1,
+        progress: 0,
+        discountTag: product.discountTag,
+      };
+      roomProductsData[roomId] = [...products, newProduct];
       return {};
     }),
 

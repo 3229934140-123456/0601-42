@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   ShoppingBag,
@@ -26,6 +26,7 @@ import type { Product, OralBroadcast } from '@/types';
 const ProductsPage = () => {
   const { id } = useParams<{ id: string }>();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
+  const setCurrentRoomId = useAppStore((state) => state.setCurrentRoomId);
   const getRoomProducts = useAppStore((state) => state.getRoomProducts);
   const getRoomOralBroadcasts = useAppStore(
     (state) => state.getRoomOralBroadcasts
@@ -33,12 +34,19 @@ const ProductsPage = () => {
   const updateProductStatus = useAppStore(
     (state) => state.updateProductStatus
   );
+  const addProduct = useAppStore((state) => state.addProduct);
   const operatorConclusions = useAppStore(
     (state) => state.operatorConclusions
   );
 
   const roomId = id || currentRoomId;
   const room = channels.find((c) => c.id === roomId);
+
+  useEffect(() => {
+    if (id && id !== currentRoomId) {
+      setCurrentRoomId(id);
+    }
+  }, [id, currentRoomId, setCurrentRoomId]);
   const products = getRoomProducts(roomId);
   const oralBroadcasts = getRoomOralBroadcasts(roomId);
 
@@ -141,6 +149,15 @@ const ProductsPage = () => {
     downloadReport(room.title, report);
   };
 
+  const handleAddProduct = () => {
+    const name = window.prompt('请输入商品名称：', '新商品');
+    if (name && name.trim()) {
+      const priceStr = window.prompt('请输入商品价格：', '99');
+      const price = priceStr ? Number(priceStr) : 99;
+      addProduct(roomId, { name: name.trim(), price });
+    }
+  };
+
   if (!hasData) {
     return (
       <div className="h-full flex flex-col gap-6">
@@ -169,7 +186,10 @@ const ProductsPage = () => {
             该直播间暂无商品数据，请先添加商品
           </p>
           <div className="flex gap-3">
-            <button className="h-10 px-5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-2">
+            <button
+              onClick={handleAddProduct}
+              className="h-10 px-5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-2"
+            >
               <Plus size={16} />
               添加商品
             </button>

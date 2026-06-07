@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Pin,
   PinOff,
@@ -24,9 +24,12 @@ import { cn } from '@/lib/utils';
 
 const InteractionPage = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
+  const setCurrentRoomId = useAppStore((state) => state.setCurrentRoomId);
   const pinComment = useAppStore((state) => state.pinComment);
   const unpinComment = useAppStore((state) => state.unpinComment);
+  const addComment = useAppStore((state) => state.addComment);
   const getRoomComments = useAppStore((state) => state.getRoomComments);
   const getRoomFrequentComments = useAppStore(
     (state) => state.getRoomFrequentComments
@@ -37,6 +40,12 @@ const InteractionPage = () => {
 
   const roomId = id || currentRoomId;
   const room = channels.find((c) => c.id === roomId);
+
+  useEffect(() => {
+    if (id && id !== currentRoomId) {
+      setCurrentRoomId(id);
+    }
+  }, [id, currentRoomId, setCurrentRoomId]);
   const comments = getRoomComments(roomId);
   const frequentComments = getRoomFrequentComments(roomId);
 
@@ -110,6 +119,13 @@ const InteractionPage = () => {
     downloadReport(room.title, report);
   };
 
+  const handleAddComment = () => {
+    const content = window.prompt('请输入评论内容：', '这个商品怎么样？好用吗？');
+    if (content && content.trim()) {
+      addComment(roomId, content.trim());
+    }
+  };
+
   if (!hasData) {
     return (
       <div className="h-full flex flex-col gap-6">
@@ -138,11 +154,17 @@ const InteractionPage = () => {
             该直播间暂无评论数据，等待开播后会自动同步
           </p>
           <div className="flex gap-3">
-            <button className="h-10 px-5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-2">
+            <button
+              onClick={handleAddComment}
+              className="h-10 px-5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-2"
+            >
               <Plus size={16} />
               手动添加评论
             </button>
-            <button className="h-10 px-5 rounded-lg border border-border text-text-secondary text-sm font-medium hover:text-text-primary hover:border-border-hover transition-colors">
+            <button
+              onClick={() => navigate('/')}
+              className="h-10 px-5 rounded-lg border border-border text-text-secondary text-sm font-medium hover:text-text-primary hover:border-border-hover transition-colors"
+            >
               去频道墙看看
             </button>
           </div>

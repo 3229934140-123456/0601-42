@@ -123,9 +123,9 @@ export const getProductStatusText = (status: string): string => {
   const texts: Record<string, string> = {
     pending: '待讲解',
     explaining: '讲解中',
-    done: '已讲解',
+    explained: '已讲解',
   };
-  return texts[status] || '未知';
+  return texts[status] || '待讲解';
 };
 
 export const getLiveStatusText = (status: string): string => {

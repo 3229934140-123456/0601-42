@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   TrendingUp,
@@ -66,6 +66,21 @@ const AnalyticsPage = () => {
 
   const [timeRange, setTimeRange] = useState('week');
   const [showRoomSelector, setShowRoomSelector] = useState(false);
+  const [drillDownRoom, setDrillDownRoom] = useState<string | null>(null);
+  const [drillDownMetric, setDrillDownMetric] = useState<string | null>(null);
+
+  const timeRangeMultiplier = useMemo(() => {
+    switch (timeRange) {
+      case 'today':
+        return 1;
+      case 'week':
+        return 6.5;
+      case 'month':
+        return 26;
+      default:
+        return 1;
+    }
+  }, [timeRange]);
 
   const compareRooms = useMemo(() => {
     return channelsData.filter((c) => selectedCompareRooms.includes(c.id));
@@ -84,15 +99,15 @@ const AnalyticsPage = () => {
       return {
         name: room.title,
         id: room.id,
-        peakViewers: room.peakViewers,
-        interactionRate: 12.5 + Math.random() * 5,
-        productClicks: totalClicks,
+        peakViewers: Math.round(room.peakViewers * (0.8 + Math.random() * 0.4)),
+        interactionRate: (12.5 + Math.random() * 5) * (0.9 + Math.random() * 0.2),
+        productClicks: Math.round(totalClicks * timeRangeMultiplier * (0.85 + Math.random() * 0.3)),
         conversion: (3 + Math.random() * 4).toFixed(1),
-        riskCount,
-        gmv: totalGmv,
+        riskCount: Math.max(0, Math.round(riskCount * timeRangeMultiplier * (0.7 + Math.random() * 0.4))),
+        gmv: Math.round(totalGmv * timeRangeMultiplier * (0.85 + Math.random() * 0.3)),
       };
     });
-  }, [compareRooms, getRoomProducts, getPendingRisksCount]);
+  }, [compareRooms, getRoomProducts, getPendingRisksCount, timeRangeMultiplier]);
 
   const trendData = useMemo(() => {
     if (compareRooms.length === 0) return [];
@@ -186,6 +201,57 @@ ${compareData
   const availableRooms = channelsData.filter(
     (c) => !selectedCompareRooms.includes(c.id)
   );
+
+  const drillDownDetail = useMemo(() => {
+    if (!drillDownRoom) return null;
+    const roomData = compareData.find((d) => d.id === drillDownRoom);
+    if (!roomData) return null;
+    const room = compareRooms.find((r) => r.id === drillDownRoom);
+    if (!room) return null;
+
+    return {
+      room,
+      roomData,
+      breakdown: {
+        interaction: {
+          totalComments: Math.round(roomData.peakViewers * roomData.interactionRate * 0.1),
+          questions: Math.round(roomData.peakViewers * roomData.interactionRate * 0.03),
+          shares: Math.round(roomData.peakViewers * roomData.interactionRate * 0.015),
+          likes: Math.round(roomData.peakViewers * roomData.interactionRate * 0.5),
+        },
+        productClicks: {
+          top1: Math.round(roomData.productClicks * 0.35),
+          top2: Math.round(roomData.productClicks * 0.25),
+          top3: Math.round(roomData.productClicks * 0.15),
+          others: Math.round(roomData.productClicks * 0.25),
+        },
+        conversion: {
+          productView: roomData.productClicks,
+          addCart: Math.round(roomData.productClicks * 0.25),
+          order: Math.round(roomData.productClicks * 0.08),
+          paid: Math.round(roomData.productClicks * 0.065),
+        },
+        risks: {
+          low: Math.round(roomData.riskCount * 0.5),
+          medium: Math.round(roomData.riskCount * 0.35),
+          high: Math.round(roomData.riskCount * 0.15),
+        },
+      },
+    };
+  }, [drillDownRoom, compareData, compareRooms]);
+
+  const handleDrillDown = useCallback(
+    (roomId: string, metric?: string) => {
+      setDrillDownRoom(roomId);
+      setDrillDownMetric(metric || null);
+    },
+    []
+  );
+
+  const closeDrillDown = useCallback(() => {
+    setDrillDownRoom(null);
+    setDrillDownMetric(null);
+  }, []);
 
   return (
     <div className="h-full flex flex-col gap-6 overflow-y-auto">
@@ -315,17 +381,27 @@ ${compareData
               {compareDimensions.map((dim, index) => (
                 <div
                   key={dim.key}
-                  className="p-4 rounded-xl bg-bg-primary border border-border"
+                  className="p-4 rounded-xl bg-bg-primary border border-border cursor-pointer hover:border-accent/50 hover:bg-accent/5 transition-all"
+                  onClick={() => {
+                    if (compareData.length > 0) {
+                      handleDrillDown(compareData[0].id, dim.key);
+                    }
+                  }}
                 >
                   <div className="flex items-center gap-2 text-text-secondary mb-3">
                     <dim.icon size={16} />
                     <span className="text-xs">{dim.label}</span>
+                    <span className="ml-auto text-xs text-text-tertiary">▸</span>
                   </div>
                   <div className="space-y-2">
                     {compareData.map((d, i) => (
                       <div
                         key={d.id}
                         className="flex items-center justify-between"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDrillDown(d.id, dim.key);
+                        }}
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -334,7 +410,7 @@ ${compareData
                               backgroundColor: colors[i % colors.length],
                             }}
                           />
-                          <span className="text-xs text-text-secondary truncate max-w-[80px]">
+                          <span className="text-xs text-text-secondary truncate max-w-[80px] hover:text-accent">
                             {d.name}
                           </span>
                         </div>
@@ -457,7 +533,8 @@ ${compareData
                       {compareData.map((d, i) => (
                         <th
                           key={d.id}
-                          className="text-left py-3 px-4 font-medium"
+                          className="text-left py-3 px-4 font-medium cursor-pointer"
+                          onClick={() => handleDrillDown(d.id)}
                         >
                           <div className="flex items-center gap-2">
                             <div
@@ -466,7 +543,10 @@ ${compareData
                                 backgroundColor: colors[i % colors.length],
                               }}
                             />
-                            <span className="text-text-primary">{d.name}</span>
+                            <span className="text-text-primary hover:text-accent">
+                              {d.name}
+                            </span>
+                            <span className="text-text-tertiary text-xs">▸</span>
                           </div>
                         </th>
                       ))}
@@ -635,6 +715,216 @@ ${compareData
           </div>
         </div>
       </div>
+
+      {drillDownDetail && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-secondary rounded-xl border border-border w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div>
+                <h3 className="text-lg font-semibold text-text-primary">
+                  数据下钻 - {drillDownDetail.room.title}
+                </h3>
+                <p className="text-sm text-text-secondary mt-1">
+                  {timeRanges.find((t) => t.value === timeRange)?.label}数据构成
+                </p>
+              </div>
+              <button
+                onClick={closeDrillDown}
+                className="p-2 rounded-lg hover:bg-bg-primary text-text-tertiary hover:text-text-primary"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-bg-primary border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-2">
+                    <Users size={14} />
+                    <span className="text-xs">互动率构成</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">评论数</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.interaction.totalComments)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">提问数</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.interaction.questions)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">分享数</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.interaction.shares)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">点赞数</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.interaction.likes)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-bg-primary border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-2">
+                    <ShoppingCart size={14} />
+                    <span className="text-xs">商品点击构成</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">TOP1商品</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.productClicks.top1)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">TOP2商品</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.productClicks.top2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">TOP3商品</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.productClicks.top3)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">其他商品</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.productClicks.others)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-bg-primary border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-2">
+                    <DollarSign size={14} />
+                    <span className="text-xs">成交转化漏斗</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">商品浏览</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.conversion.productView)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">加入购物车</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.conversion.addCart)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">提交订单</span>
+                      <span className="text-text-primary font-medium">
+                        {formatNumber(drillDownDetail.breakdown.conversion.order)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">支付成功</span>
+                      <span className="text-accent font-medium">
+                        {formatNumber(drillDownDetail.breakdown.conversion.paid)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-bg-primary border border-border">
+                  <div className="flex items-center gap-2 text-text-secondary mb-2">
+                    <AlertTriangle size={14} />
+                    <span className="text-xs">风险数量构成</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">低风险</span>
+                      <span className="text-green-500 font-medium">
+                        {drillDownDetail.breakdown.risks.low} 条
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">中风险</span>
+                      <span className="text-yellow-500 font-medium">
+                        {drillDownDetail.breakdown.risks.medium} 条
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-text-tertiary">高风险</span>
+                      <span className="text-red-500 font-medium">
+                        {drillDownDetail.breakdown.risks.high} 条
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm border-t border-border pt-1.5 mt-1.5">
+                      <span className="text-text-secondary">总计</span>
+                      <span className="text-text-primary font-medium">
+                        {drillDownDetail.roomData.riskCount} 条
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-bg-primary border border-border">
+                <div className="flex items-center gap-2 text-text-secondary mb-3">
+                  <FileText size={14} />
+                  <span className="text-xs">核心指标概览</span>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-primary">
+                      {formatNumber(drillDownDetail.roomData.peakViewers)}
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-0.5">在线峰值</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-primary">
+                      {drillDownDetail.roomData.interactionRate.toFixed(1)}%
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-0.5">互动率</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-text-primary">
+                      {drillDownDetail.roomData.conversion}%
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-0.5">转化率</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-lg font-bold text-accent">
+                      {formatPrice(drillDownDetail.roomData.gmv)}
+                    </p>
+                    <p className="text-xs text-text-tertiary mt-0.5">预计GMV</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-border flex justify-end gap-3">
+              <button
+                onClick={closeDrillDown}
+                className="px-4 py-2 rounded-lg border border-border text-text-secondary hover:text-text-primary text-sm"
+              >
+                关闭
+              </button>
+              <button
+                onClick={() => {
+                  navigate(`/live/${drillDownDetail.room.id}`);
+                  closeDrillDown();
+                }}
+                className="px-4 py-2 rounded-lg bg-accent text-white text-sm hover:bg-accent/90"
+              >
+                查看直播详情
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

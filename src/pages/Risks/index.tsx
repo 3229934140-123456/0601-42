@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { channels } from '@/data/channels';
+import { staffList } from '@/data/schedule';
 import {
   formatTime,
   formatDate,
@@ -29,6 +30,7 @@ import type { Risk, RiskLevel, RiskStatus } from '@/types';
 const RisksPage = () => {
   const { id } = useParams<{ id: string }>();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
+  const setCurrentRoomId = useAppStore((state) => state.setCurrentRoomId);
   const getRoomRisks = useAppStore((state) => state.getRoomRisks);
   const updateRiskStatus = useAppStore((state) => state.updateRiskStatus);
   const addRiskNote = useAppStore((state) => state.addRiskNote);
@@ -38,6 +40,12 @@ const RisksPage = () => {
 
   const roomId = id || currentRoomId;
   const room = channels.find((c) => c.id === roomId);
+
+  useEffect(() => {
+    if (id && id !== currentRoomId) {
+      setCurrentRoomId(id);
+    }
+  }, [id, currentRoomId, setCurrentRoomId]);
   const risks = getRoomRisks(roomId);
 
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
@@ -458,6 +466,48 @@ const RisksPage = () => {
                     <p className="text-sm font-medium text-text-primary mt-1">
                       {formatDate(selectedRisk.timestamp)}
                     </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 rounded-lg bg-bg-primary">
+                    <p className="text-xs text-text-tertiary">处理人</p>
+                    <div className="mt-2">
+                      {selectedRisk.handler ? (
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={staffList.find((s) => s.name === selectedRisk.handler)?.avatar || 'https://i.pravatar.cc/150'}
+                            alt={selectedRisk.handler}
+                            className="w-6 h-6 rounded-full"
+                          />
+                          <span className="text-sm font-medium text-text-primary">
+                            {selectedRisk.handler}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-text-tertiary">未分派</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-bg-primary">
+                    <p className="text-xs text-text-tertiary">分派给</p>
+                    <select
+                      value={selectedRisk.handler || ''}
+                      onChange={(e) => {
+                        const handler = e.target.value || undefined;
+                        updateRiskStatus(roomId, selectedRisk.id, selectedRisk.status, handler);
+                        const updated = getRoomRisks(roomId).find((r) => r.id === selectedRisk.id);
+                        if (updated) setSelectedRisk(updated);
+                      }}
+                      className="mt-1.5 w-full px-2 py-1.5 rounded-lg bg-bg-secondary border border-border text-sm text-text-primary focus:outline-none focus:border-accent/50"
+                    >
+                      <option value="">未分派</option>
+                      {staffList.map((staff) => (
+                        <option key={staff.id} value={staff.name}>
+                          {staff.name} - {staff.role}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
