@@ -20,6 +20,7 @@ interface ExportReportOptions {
   oralBroadcasts: OralBroadcast[];
   risks: RiskAlert[];
   operatorConclusion?: string;
+  operatorConclusionTimestamp?: string;
 }
 
 export const generateLiveReport = (options: ExportReportOptions): string => {
@@ -31,6 +32,7 @@ export const generateLiveReport = (options: ExportReportOptions): string => {
     oralBroadcasts,
     risks,
     operatorConclusion,
+    operatorConclusionTimestamp,
   } = options;
 
   const doneProducts = products.filter((p) => p.status === 'explained').length;
@@ -57,6 +59,7 @@ export const generateLiveReport = (options: ExportReportOptions): string => {
     oralBroadcasts,
     risks,
     operatorConclusion,
+    operatorConclusionTimestamp,
   });
 
   const now = new Date().toLocaleString('zh-CN', {

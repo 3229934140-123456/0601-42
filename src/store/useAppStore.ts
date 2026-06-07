@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Comment, RiskAlert, OralBroadcast, ViewerTrendPoint, Product } from '@/types';
+import type { Comment, RiskAlert, OralBroadcast, ViewerTrendPoint, Product, ShiftHandover } from '@/types';
 import { channels } from '@/data/channels';
 import { roomCommentsData, roomFrequentComments } from '@/data/comments';
 import { roomProductsData, roomOralData } from '@/data/products';
@@ -13,6 +13,8 @@ interface AppState {
   sidebarCollapsed: boolean;
   selectedCompareRooms: string[];
   operatorConclusions: Record<string, string>;
+  operatorConclusionTimestamps: Record<string, string>;
+  shiftHandovers: ShiftHandover[];
   
   toggleTheme: () => void;
   setCurrentRoomId: (id: string) => void;
@@ -28,6 +30,8 @@ interface AppState {
   addProduct: (roomId: string, product: Partial<Product>) => void;
   toggleCompareRoom: (roomId: string) => void;
   setOperatorConclusion: (roomId: string, conclusion: string) => void;
+  addShiftHandover: (handover: Omit<ShiftHandover, 'id' | 'createdAt'>) => void;
+  getShiftHandovers: (date: string, shift?: string) => ShiftHandover[];
   
   getRoomComments: (roomId: string) => Comment[];
   getRoomFrequentComments: (roomId: string) => typeof roomFrequentComments[string];
@@ -46,6 +50,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   sidebarCollapsed: false,
   selectedCompareRooms: ['room-001', 'room-002', 'room-005'],
   operatorConclusions: {},
+  operatorConclusionTimestamps: {},
+  shiftHandovers: [],
 
   toggleTheme: () =>
     set((state) => ({
@@ -215,7 +221,31 @@ export const useAppStore = create<AppState>((set, get) => ({
         ...state.operatorConclusions,
         [roomId]: conclusion,
       },
+      operatorConclusionTimestamps: {
+        ...state.operatorConclusionTimestamps,
+        [roomId]: new Date().toISOString(),
+      },
     })),
+
+  addShiftHandover: (handover) =>
+    set((state) => ({
+      shiftHandovers: [
+        ...state.shiftHandovers,
+        {
+          ...handover,
+          id: `handover-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    })),
+
+  getShiftHandovers: (date, shift) => {
+    const handovers = get().shiftHandovers.filter((h) => h.date === date);
+    if (shift) {
+      return handovers.filter((h) => h.shift === shift);
+    }
+    return handovers;
+  },
 
   getRoomComments: (roomId: string) => roomCommentsData[roomId] || [],
   getRoomFrequentComments: (roomId: string) => roomFrequentComments[roomId] || [],

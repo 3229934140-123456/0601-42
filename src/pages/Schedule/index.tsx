@@ -11,7 +11,9 @@ import {
   Shield,
   CheckCircle,
   Star,
+  FileText,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
 import {
   staffList,
@@ -25,6 +27,7 @@ import { cn } from '@/lib/utils';
 import type { Staff, Risk } from '@/types';
 
 const SchedulePage = () => {
+  const navigate = useNavigate();
   const channelsData = useAppStore((state) => state.channels);
   const getPendingRisksCount = useAppStore(
     (state) => state.getPendingRisksCount
@@ -34,6 +37,8 @@ const SchedulePage = () => {
   );
   const getRoomRisks = useAppStore((state) => state.getRoomRisks);
   const updateRiskStatus = useAppStore((state) => state.updateRiskStatus);
+  const addShiftHandover = useAppStore((state) => state.addShiftHandover);
+  const getShiftHandovers = useAppStore((state) => state.getShiftHandovers);
 
   const allPendingRisks: (Risk & { roomId: string })[] = [];
   channelsData.forEach((room) => {
@@ -49,7 +54,11 @@ const SchedulePage = () => {
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [selectedShift, setSelectedShift] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
+  const [handoverNote, setHandoverNote] = useState('');
+  const [handoverKeyRooms, setHandoverKeyRooms] = useState<string[]>([]);
+  const [handoverRisks, setHandoverRisks] = useState<string[]>([]);
 
   const weekDays = useMemo(() => {
     const days = [];
@@ -113,6 +122,68 @@ const SchedulePage = () => {
   const handleAssignRisk = (risk: Risk & { roomId: string }) => {
     if (!selectedStaff) return;
     updateRiskStatus(risk.roomId, risk.id, risk.status, selectedStaff.name);
+  };
+
+  const todayDateStr = selectedDate.toISOString().split('T')[0];
+
+  const currentShiftHandovers = selectedShift
+    ? getShiftHandovers(todayDateStr, selectedShift)
+    : [];
+
+  const previousShiftHandover = (() => {
+    if (!selectedShift) return null;
+    const shiftOrder = ['早班', '中班', '晚班'];
+    const currentIdx = shiftOrder.indexOf(selectedShift);
+    if (currentIdx <= 0) return null;
+    const prevShift = shiftOrder[currentIdx - 1];
+    const prevHandovers = getShiftHandovers(todayDateStr, prevShift);
+    return prevHandovers[prevHandovers.length - 1] || null;
+  })();
+
+  const handleShiftClick = (shiftName: string) => {
+    setSelectedShift(shiftName === selectedShift ? null : shiftName);
+    setHandoverNote('');
+    setHandoverKeyRooms([]);
+    setHandoverRisks([]);
+  };
+
+  const toggleKeyRoom = (roomId: string) => {
+    setHandoverKeyRooms((prev) =>
+      prev.includes(roomId)
+        ? prev.filter((id) => id !== roomId)
+        : [...prev, roomId]
+    );
+  };
+
+  const toggleHandoverRisk = (riskKey: string) => {
+    setHandoverRisks((prev) =>
+      prev.includes(riskKey)
+        ? prev.filter((k) => k !== riskKey)
+        : [...prev, riskKey]
+    );
+  };
+
+  const handleSubmitHandover = () => {
+    if (!selectedShift || !selectedStaff || !handoverNote.trim()) return;
+
+    const pendingRiskIds = handoverRisks.map((key) => {
+      const [roomId, riskId] = key.split('|');
+      return { roomId, riskId };
+    });
+
+    addShiftHandover({
+      date: todayDateStr,
+      shift: selectedShift,
+      handlerName: selectedStaff.name,
+      handlerId: selectedStaff.id,
+      note: handoverNote,
+      keyRoomIds: handoverKeyRooms,
+      pendingRiskIds,
+    });
+
+    setHandoverNote('');
+    setHandoverKeyRooms([]);
+    setHandoverRisks([]);
   };
 
   const riskLevelColors: Record<string, string> = {
@@ -279,15 +350,30 @@ const SchedulePage = () => {
                     '22:00 - 06:00',
                   ];
 
+                  const shiftHandovers = getShiftHandovers(todayDateStr, shiftName);
+
                   return (
                     <div
                       key={shiftName}
-                      className="p-4 rounded-xl bg-bg-primary border border-border"
+                      onClick={() => handleShiftClick(shiftName)}
+                      className={cn(
+                        'p-4 rounded-xl bg-bg-primary border cursor-pointer transition-all',
+                        selectedShift === shiftName
+                          ? 'border-accent bg-accent/5 ring-1 ring-accent/30'
+                          : 'border-border hover:border-accent/30'
+                      )}
                     >
                       <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-medium text-text-primary">
-                          {shiftName}
-                        </h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-medium text-text-primary">
+                            {shiftName}
+                          </h4>
+                          {shiftHandovers.length > 0 && (
+                            <span className="px-1.5 py-0.5 rounded text-xs bg-accent/10 text-accent">
+                              {shiftHandovers.length}条交接
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-text-secondary flex items-center gap-1">
                           <Clock size={12} />
                           {shiftTimes[idx]}
@@ -337,6 +423,187 @@ const SchedulePage = () => {
               </div>
             )}
           </div>
+
+          {selectedShift && (
+            <div className="bg-bg-secondary rounded-xl border border-border p-4">
+              <h3 className="text-base font-semibold text-text-primary mb-4 flex items-center gap-2">
+                <FileText size={18} className="text-accent" />
+                {selectedShift} - 交接班记录
+              </h3>
+
+              {previousShiftHandover && (
+                <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
+                      ⬅️ 上一班交接
+                    </span>
+                    <span className="text-xs text-text-tertiary">
+                      {previousShiftHandover.handlerName} ·{' '}
+                      {new Date(previousShiftHandover.createdAt).toLocaleTimeString('zh-CN', {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                  <p className="text-sm text-text-secondary">
+                    {previousShiftHandover.note}
+                  </p>
+                  {previousShiftHandover.pendingRiskIds.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-yellow-500/20">
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1.5">
+                        待跟进风险 ({previousShiftHandover.pendingRiskIds.length})
+                      </p>
+                      <div className="space-y-1">
+                        {previousShiftHandover.pendingRiskIds.slice(0, 3).map((item) => {
+                          const risk = allPendingRisks.find(
+                            (r) => r.roomId === item.roomId && r.id === item.riskId
+                          );
+                          if (!risk) return null;
+                          return (
+                            <div
+                              key={`${item.roomId}-${item.riskId}`}
+                              onClick={() =>
+                                navigate(
+                                  `/risks/${item.roomId}?riskId=${item.riskId}`
+                                )
+                              }
+                              className="flex items-center justify-between text-xs cursor-pointer hover:bg-yellow-500/10 px-2 py-1 rounded"
+                            >
+                              <span className="text-text-secondary truncate flex-1">
+                                {risk.title}
+                              </span>
+                              <span
+                                className={cn(
+                                  'ml-2 shrink-0 px-1.5 py-0.5 rounded text-[10px] text-white',
+                                  riskLevelColors[risk.level]
+                                )}
+                              >
+                                {getRiskLevelText(risk.level)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {currentShiftHandovers.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-text-tertiary mb-2">
+                    本班交接记录 ({currentShiftHandovers.length})
+                  </p>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {currentShiftHandovers.slice().reverse().map((handover) => (
+                      <div
+                        key={handover.id}
+                        className="p-3 rounded-lg bg-bg-primary border border-border"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-text-primary">
+                            {handover.handlerName}
+                          </span>
+                          <span className="text-xs text-text-tertiary">
+                            {new Date(handover.createdAt).toLocaleTimeString('zh-CN', {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-text-secondary">
+                          {handover.note}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-text-secondary mb-1.5 block">
+                    重点直播间
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {channelsData.slice(0, 6).map((room) => (
+                      <button
+                        key={room.id}
+                        onClick={() => toggleKeyRoom(room.id)}
+                        className={cn(
+                          'px-2.5 py-1 rounded text-xs transition-all',
+                          handoverKeyRooms.includes(room.id)
+                            ? 'bg-accent text-white'
+                            : 'bg-bg-primary border border-border text-text-secondary hover:border-accent/50'
+                        )}
+                      >
+                        {room.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-text-secondary mb-1.5 block">
+                    待交接风险
+                  </label>
+                  <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                    {allPendingRisks.slice(0, 6).map((risk) => {
+                      const riskKey = `${risk.roomId}|${risk.id}`;
+                      return (
+                        <div
+                          key={riskKey}
+                          onClick={() => toggleHandoverRisk(riskKey)}
+                          className={cn(
+                            'flex items-center gap-2 p-2 rounded cursor-pointer text-xs transition-all',
+                            handoverRisks.includes(riskKey)
+                              ? 'bg-accent/10 border border-accent/30'
+                              : 'bg-bg-primary border border-border hover:border-accent/30'
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              'shrink-0 w-1 h-4 rounded',
+                              riskLevelColors[risk.level]
+                            )}
+                          />
+                          <span className="flex-1 truncate text-text-secondary">
+                            {risk.title}
+                          </span>
+                          {handoverRisks.includes(riskKey) && (
+                            <CheckCircle size={14} className="text-accent" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-xs text-text-secondary mb-1.5 block">
+                    交接备注
+                  </label>
+                  <textarea
+                    value={handoverNote}
+                    onChange={(e) => setHandoverNote(e.target.value)}
+                    placeholder="请输入本班重点和交接内容..."
+                    className="w-full px-3 py-2 rounded-lg bg-bg-primary border border-border text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent/50 resize-none"
+                    rows={3}
+                  />
+                </div>
+
+                <button
+                  onClick={handleSubmitHandover}
+                  disabled={!handoverNote.trim() || !selectedStaff}
+                  className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  {selectedStaff
+                    ? `提交交接 (${selectedStaff.name})`
+                    : '请先选择交接人'}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="bg-bg-secondary rounded-xl border border-border p-4 flex-1 flex flex-col min-h-0">
             <h3 className="text-base font-semibold text-text-primary mb-4 flex items-center gap-2">

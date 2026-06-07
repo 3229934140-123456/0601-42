@@ -60,6 +60,9 @@ const LiveDetail = () => {
   const operatorConclusions = useAppStore(
     (state) => state.operatorConclusions
   );
+  const operatorConclusionTimestamps = useAppStore(
+    (state) => state.operatorConclusionTimestamps
+  );
   const setOperatorConclusion = useAppStore(
     (state) => state.setOperatorConclusion
   );
@@ -107,6 +110,7 @@ const LiveDetail = () => {
     oralBroadcasts,
     risks,
     operatorConclusion: operatorConclusions[roomId],
+    operatorConclusionTimestamp: operatorConclusionTimestamps[roomId],
   });
 
   const stats = useMemo(() => {
@@ -152,6 +156,7 @@ const LiveDetail = () => {
       oralBroadcasts,
       risks,
       operatorConclusion: operatorConclusions[roomId],
+      operatorConclusionTimestamp: operatorConclusionTimestamps[roomId],
     });
 
     downloadReport(room.title, report);
@@ -165,12 +170,15 @@ const LiveDetail = () => {
   const handleTimelineClick = (item: {
     targetPage: string;
     targetId?: string;
+    type?: string;
   }) => {
-    const { targetPage, targetId } = item;
+    const { targetPage, targetId, type } = item;
     if (targetPage === 'live') {
       navigate(`/live/${roomId}`);
     } else if (targetId) {
-      navigate(`/${targetPage}/${roomId}`);
+      const paramKey = type?.startsWith('risk') ? 'riskId' : type?.startsWith('product') || type?.startsWith('oral') ? 'productId' : type === 'pinned_comment' ? 'commentId' : '';
+      const query = paramKey ? `?${paramKey}=${targetId}` : '';
+      navigate(`/${targetPage}/${roomId}${query}`);
     } else {
       navigate(`/${targetPage}/${roomId}`);
     }

@@ -194,3 +194,15 @@ export interface TimelineItem {
   targetId?: string;
   level?: string;
 }
+
+export interface ShiftHandover {
+  id: string;
+  date: string;
+  shift: string;
+  handlerName: string;
+  handlerId: string;
+  note: string;
+  keyRoomIds: string[];
+  pendingRiskIds: { roomId: string; riskId: string }[];
+  createdAt: string;
+}

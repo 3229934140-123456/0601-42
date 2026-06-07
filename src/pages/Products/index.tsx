@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import {
   ShoppingBag,
   Package,
@@ -25,6 +25,7 @@ import type { Product, OralBroadcast } from '@/types';
 
 const ProductsPage = () => {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
   const setCurrentRoomId = useAppStore((state) => state.setCurrentRoomId);
   const getRoomProducts = useAppStore((state) => state.getRoomProducts);
@@ -50,9 +51,25 @@ const ProductsPage = () => {
   const products = getRoomProducts(roomId);
   const oralBroadcasts = getRoomOralBroadcasts(roomId);
 
+  const params = new URLSearchParams(location.search);
+  const productIdFromUrl = params.get('productId');
+
   const [currentProductId, setCurrentProductId] = useState<string | null>(
-    products.find((p) => p.status === 'explaining')?.id || null
+    productIdFromUrl || products.find((p) => p.status === 'explaining')?.id || null
   );
+
+  useEffect(() => {
+    if (productIdFromUrl && products.length > 0) {
+      const product = products.find((p) => p.id === productIdFromUrl);
+      if (product) {
+        setCurrentProductId(productIdFromUrl);
+        setTimeout(() => {
+          const el = document.getElementById(`product-${productIdFromUrl}`);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    }
+  }, [productIdFromUrl, products]);
   const [filterStatus, setFilterStatus] = useState<
     'all' | 'pending' | 'explaining' | 'explained'
   >('all');
@@ -331,6 +348,7 @@ const ProductsPage = () => {
             {filteredProducts.map((product, index) => (
               <div
                 key={product.id}
+                id={`product-${product.id}`}
                 onClick={() => setCurrentProductId(product.id)}
                 className={cn(
                   'p-4 rounded-xl border cursor-pointer transition-all',

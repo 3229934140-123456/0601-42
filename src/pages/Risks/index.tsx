@@ -1,5 +1,5 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Shield,
@@ -29,6 +29,8 @@ import type { Risk, RiskLevel, RiskStatus } from '@/types';
 
 const RisksPage = () => {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
   const setCurrentRoomId = useAppStore((state) => state.setCurrentRoomId);
   const getRoomRisks = useAppStore((state) => state.getRoomRisks);
@@ -40,15 +42,31 @@ const RisksPage = () => {
 
   const roomId = id || currentRoomId;
   const room = channels.find((c) => c.id === roomId);
+  const riskListRef = useRef<HTMLDivElement>(null);
+  const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
 
   useEffect(() => {
     if (id && id !== currentRoomId) {
       setCurrentRoomId(id);
     }
   }, [id, currentRoomId, setCurrentRoomId]);
-  const risks = getRoomRisks(roomId);
 
-  const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
+  const risks = getRoomRisks(roomId);
+  const params = new URLSearchParams(location.search);
+  const riskIdFromUrl = params.get('riskId');
+
+  useEffect(() => {
+    if (riskIdFromUrl && risks.length > 0) {
+      const risk = risks.find((r) => r.id === riskIdFromUrl);
+      if (risk) {
+        setSelectedRisk(risk);
+        setTimeout(() => {
+          const el = document.getElementById(`risk-${riskIdFromUrl}`);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+      }
+    }
+  }, [riskIdFromUrl, risks]);
   const [levelFilter, setLevelFilter] = useState<RiskLevel | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<RiskStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -360,6 +378,7 @@ const RisksPage = () => {
               filteredRisks.map((risk) => (
                 <div
                   key={risk.id}
+                  id={`risk-${risk.id}`}
                   onClick={() => setSelectedRisk(risk)}
                   className={cn(
                     'p-4 rounded-xl border cursor-pointer transition-all',

@@ -12,12 +12,13 @@ interface GenerateTimelineOptions {
   oralBroadcasts: OralBroadcast[];
   risks: RiskAlert[];
   operatorConclusion?: string;
+  operatorConclusionTimestamp?: string;
 }
 
 export const generateTimeline = (
   options: GenerateTimelineOptions
 ): TimelineItem[] => {
-  const { pinnedComments, products, oralBroadcasts, risks, operatorConclusion } =
+  const { pinnedComments, products, oralBroadcasts, risks, operatorConclusion, operatorConclusionTimestamp } =
     options;
   const items: TimelineItem[] = [];
 
@@ -85,9 +86,7 @@ export const generateTimeline = (
   });
 
   if (operatorConclusion) {
-    const conclusionTime = risks.length > 0
-      ? risks[risks.length - 1].timestamp
-      : new Date().toISOString();
+    const conclusionTime = operatorConclusionTimestamp || new Date().toISOString();
     items.push({
       id: 'conclusion',
       type: 'operator_conclusion',

@@ -113,15 +113,59 @@ const AnalyticsPage = () => {
     if (compareRooms.length === 0) return [];
 
     const firstRoomTrend = getViewerTrend(compareRooms[0]?.id) || [];
-    return firstRoomTrend.map((point, index) => {
-      const dataPoint: Record<string, any> = { time: point.time };
+    let points = firstRoomTrend;
+
+    if (timeRange === 'week') {
+      points = firstRoomTrend.filter((_, i) => i % 2 === 0).slice(0, 7);
+    } else if (timeRange === 'month') {
+      points = firstRoomTrend.slice(0, 12);
+    }
+
+    return points.map((point, index) => {
+      let timeLabel = point.time;
+      if (timeRange === 'week') {
+        const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        timeLabel = days[index % 7];
+      } else if (timeRange === 'month') {
+        timeLabel = `${index + 1}日`;
+      }
+
+      const dataPoint: Record<string, any> = { time: timeLabel };
       compareRooms.forEach((room) => {
         const trend = getViewerTrend(room.id) || [];
-        dataPoint[room.title] = trend[index]?.viewers || 0;
+        const baseValue = trend[index * 2]?.viewers || trend[index]?.viewers || 0;
+        const multiplier = timeRange === 'today' ? 1 : timeRange === 'week' ? 0.85 + Math.random() * 0.3 : 0.75 + Math.random() * 0.5;
+        dataPoint[room.title] = Math.round(baseValue * multiplier);
       });
       return dataPoint;
     });
-  }, [compareRooms, getViewerTrend]);
+  }, [compareRooms, getViewerTrend, timeRange]);
+
+  const overallTrendData = useMemo(() => {
+    const baseTrend = getViewerTrend(channelsData[0]?.id) || [];
+    let points = baseTrend;
+
+    if (timeRange === 'week') {
+      points = baseTrend.filter((_, i) => i % 2 === 0).slice(0, 7);
+    } else if (timeRange === 'month') {
+      points = baseTrend.slice(0, 12);
+    }
+
+    return points.map((point, index) => {
+      let timeLabel = point.time;
+      if (timeRange === 'week') {
+        const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+        timeLabel = days[index % 7];
+      } else if (timeRange === 'month') {
+        timeLabel = `${index + 1}日`;
+      }
+      const multiplier = timeRange === 'today' ? 1 : timeRange === 'week' ? 5.5 : 22;
+      return {
+        time: timeLabel,
+        viewers: Math.round(point.viewers * multiplier * (0.85 + Math.random() * 0.3)),
+      };
+    });
+  }, [channelsData, getViewerTrend, timeRange]);
 
   const barChartData = useMemo(() => {
     return [
@@ -623,7 +667,7 @@ ${compareData
           </h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={getViewerTrend(channelsData[0]?.id) || []}>
+              <LineChart data={overallTrendData}>
                 <defs>
                   <linearGradient id="colorAll" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
