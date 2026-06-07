@@ -43,26 +43,28 @@ export interface Comment {
   likeCount: number;
 }
 
-export type ProductStatus = 'pending' | 'explaining' | 'done';
+export type ProductStatus = 'pending' | 'explaining' | 'explained';
 
 export interface Product {
   id: string;
   name: string;
-  image: string;
+  imageUrl: string;
   price: number;
-  originalPrice: number;
+  originalPrice?: number;
   stock: number;
-  soldCount: number;
+  salesVolume: number;
   clickCount: number;
   status: ProductStatus;
-  explainDuration: number;
+  duration?: number;
   explainStartTime?: string;
   order: number;
+  progress?: number;
+  discountTag?: string;
 }
 
 export type RiskType = 'violence' | 'porn' | 'politics' | 'fraud' | 'copyright' | 'other';
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
-export type RiskStatus = 'pending' | 'processing' | 'resolved' | 'false_alarm';
+export type RiskStatus = 'pending' | 'processing' | 'resolved' | 'false_alarm' | 'ignored';
 
 export interface RiskNote {
   id: string;
@@ -75,6 +77,7 @@ export interface RiskAlert {
   id: string;
   roomId: string;
   roomTitle: string;
+  title: string;
   type: RiskType;
   level: RiskLevel;
   description: string;
@@ -85,6 +88,8 @@ export interface RiskAlert {
   handleTime?: string;
   notes: RiskNote[];
 }
+
+export type Risk = RiskAlert;
 
 export type OralType = 'discount' | 'coupon' | 'reminder' | 'other';
 
@@ -110,7 +115,10 @@ export interface Staff {
   avatar: string;
   role: StaffRole;
   phone: string;
-  isOnline: boolean;
+  status: 'online' | 'offline';
+  isLeader?: boolean;
+  experience?: string;
+  shift?: string;
 }
 
 export interface Shift {
@@ -120,6 +128,8 @@ export interface Shift {
   endTime: string;
   members: Staff[];
   responsibilities: string[];
+  date?: Date;
+  staffId?: string;
 }
 
 export interface Schedule {
@@ -159,4 +169,9 @@ export interface FrequentComment {
   keyword: string;
   count: number;
   comments: string[];
+}
+
+export interface ViewerTrendPoint {
+  time: string;
+  viewers: number;
 }

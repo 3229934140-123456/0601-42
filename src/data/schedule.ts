@@ -1,4 +1,5 @@
-import type { Schedule, Staff } from '@/types';
+import type { Schedule, Staff, Shift, RiskAlert } from '@/types';
+import { staffResponsibleRooms, roomRisksData } from './risks';
 
 const staffList: Staff[] = [
   {
@@ -7,7 +8,10 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=31',
     role: 'supervisor',
     phone: '138****1234',
-    isOnline: true,
+    status: 'online',
+    isLeader: true,
+    experience: '5年',
+    shift: '早班',
   },
   {
     id: 's-002',
@@ -15,7 +19,9 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=32',
     role: 'moderator',
     phone: '139****5678',
-    isOnline: true,
+    status: 'online',
+    experience: '3年',
+    shift: '早班',
   },
   {
     id: 's-003',
@@ -23,7 +29,9 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=33',
     role: 'moderator',
     phone: '137****9012',
-    isOnline: true,
+    status: 'online',
+    experience: '2年',
+    shift: '早班',
   },
   {
     id: 's-004',
@@ -31,7 +39,9 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=34',
     role: 'moderator',
     phone: '136****3456',
-    isOnline: false,
+    status: 'offline',
+    experience: '1年',
+    shift: '中班',
   },
   {
     id: 's-005',
@@ -39,7 +49,10 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=35',
     role: 'manager',
     phone: '135****7890',
-    isOnline: true,
+    status: 'online',
+    isLeader: true,
+    experience: '8年',
+    shift: '中班',
   },
   {
     id: 's-006',
@@ -47,7 +60,9 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=36',
     role: 'moderator',
     phone: '134****2345',
-    isOnline: false,
+    status: 'offline',
+    experience: '3年',
+    shift: '中班',
   },
   {
     id: 's-007',
@@ -55,7 +70,9 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=37',
     role: 'moderator',
     phone: '133****6789',
-    isOnline: false,
+    status: 'offline',
+    experience: '2年',
+    shift: '晚班',
   },
   {
     id: 's-008',
@@ -63,7 +80,10 @@ const staffList: Staff[] = [
     avatar: 'https://i.pravatar.cc/150?img=38',
     role: 'supervisor',
     phone: '132****0123',
-    isOnline: false,
+    status: 'offline',
+    isLeader: true,
+    experience: '6年',
+    shift: '晚班',
   },
 ];
 
@@ -291,10 +311,37 @@ export const currentShift = {
   name: '中班',
   startTime: '14:00',
   endTime: '22:00',
-  members: staffList.filter((s) => s.isOnline),
+  members: staffList.filter((s) => s.status === 'online'),
   responsibilities: ['高峰时段监控', '重点直播间巡检', '晚高峰数据记录'],
   nextHandover: '22:00',
   handoverCountdown: '6小时32分',
 };
 
 export { staffList };
+
+export const todayStaff = staffList.map((s) => ({
+  ...s,
+  shift: s.shift || '早班',
+}));
+
+export const shifts: Shift[] = schedules[0]?.shifts.map((s) => ({
+  ...s,
+  date: new Date(),
+})) || [];
+
+export const formatShiftTime = (start: string, end: string) => {
+  return `${start} - ${end}`;
+};
+
+export { staffResponsibleRooms };
+
+export const getStaffResponsibleRooms = (staffId: string): string[] => {
+  return staffResponsibleRooms[staffId] || [];
+};
+
+export const getStaffPendingRisks = (staffId: string): RiskAlert[] => {
+  const roomIds = getStaffResponsibleRooms(staffId);
+  return roomIds
+    .flatMap((roomId: string) => roomRisksData[roomId] || [])
+    .filter((r: RiskAlert) => r.status === 'pending' || r.status === 'processing');
+};

@@ -2,110 +2,175 @@ import type { RiskAlert } from '@/types';
 
 const now = new Date();
 
-export const riskAlerts: RiskAlert[] = [
+interface RiskTemplate {
+  type: RiskAlert['type'];
+  level: RiskAlert['level'];
+  description: string;
+}
+
+const riskTemplates: RiskTemplate[] = [
   {
-    id: 'risk-001',
-    roomId: 'room-002',
-    roomTitle: '数码新品首发 限时优惠',
     type: 'fraud',
     level: 'high',
     description: '检测到疑似虚假宣传：主播声称产品具有"医疗级"功效，但未提供相关资质证明',
-    timestamp: new Date(now.getTime() - 300000).toISOString(),
-    status: 'processing',
-    handler: '运营小王',
-    handleTime: new Date(now.getTime() - 120000).toISOString(),
-    notes: [
-      {
-        id: 'note-001',
-        content: '已通知主播修改话术，正在核实产品资质',
-        author: '运营小王',
-        timestamp: new Date(now.getTime() - 120000).toISOString(),
-      },
-    ],
   },
   {
-    id: 'risk-002',
-    roomId: 'room-006',
-    roomTitle: '游戏直播 王者荣耀',
     type: 'violence',
     level: 'medium',
-    description: '检测到疑似暴力内容：游戏画面中出现血腥特效',
-    timestamp: new Date(now.getTime() - 600000).toISOString(),
-    status: 'resolved',
-    handler: '场控小李',
-    handleTime: new Date(now.getTime() - 480000).toISOString(),
-    notes: [
-      {
-        id: 'note-002',
-        content: '核实为游戏正常内容，已标记为误报',
-        author: '场控小李',
-        timestamp: new Date(now.getTime() - 480000).toISOString(),
-      },
-    ],
+    description: '检测到疑似暴力内容：画面中出现不当暴力镜头',
   },
   {
-    id: 'risk-003',
-    roomId: 'room-001',
-    roomTitle: '618年中大促 美妆专场',
     type: 'copyright',
     level: 'low',
     description: '检测到背景音乐可能涉及版权问题',
-    timestamp: new Date(now.getTime() - 900000).toISOString(),
-    status: 'resolved',
-    handler: '运营小王',
-    handleTime: new Date(now.getTime() - 780000).toISOString(),
-    notes: [
-      {
-        id: 'note-003',
-        content: '已提醒主播更换平台授权音乐',
-        author: '运营小王',
-        timestamp: new Date(now.getTime() - 780000).toISOString(),
-      },
-    ],
   },
   {
-    id: 'risk-004',
-    roomId: 'room-005',
-    roomTitle: '服装穿搭 夏季新款',
-    type: 'other',
+    type: 'politics',
     level: 'critical',
     description: '主播直播间出现敏感政治言论，需立即处理',
-    timestamp: new Date(now.getTime() - 60000).toISOString(),
-    status: 'pending',
-    notes: [],
   },
   {
-    id: 'risk-005',
-    roomId: 'room-003',
-    roomTitle: '美食探店 家乡味道',
     type: 'other',
     level: 'low',
     description: '直播画面偶尔卡顿，建议检查网络状态',
-    timestamp: new Date(now.getTime() - 1200000).toISOString(),
-    status: 'resolved',
-    handler: '技术小张',
-    handleTime: new Date(now.getTime() - 1080000).toISOString(),
-    notes: [
-      {
-        id: 'note-005',
-        content: '主播已切换网络环境，恢复正常',
-        author: '技术小张',
-        timestamp: new Date(now.getTime() - 1080000).toISOString(),
-      },
-    ],
   },
   {
-    id: 'risk-006',
-    roomId: 'room-004',
-    roomTitle: '健身减脂 30天蜕变计划',
     type: 'fraud',
     level: 'medium',
-    description: '检测到疑似夸大宣传：主播声称"7天瘦10斤"缺乏科学依据',
-    timestamp: new Date(now.getTime() - 180000).toISOString(),
-    status: 'pending',
-    notes: [],
+    description: '检测到疑似夸大宣传：主播声称的效果缺乏科学依据',
+  },
+  {
+    type: 'porn',
+    level: 'high',
+    description: '检测到疑似色情内容：主播着装不当',
   },
 ];
+
+const generateRisksForRoom = (
+  roomId: string,
+  roomTitle: string,
+  count: number
+): RiskAlert[] => {
+  const risks: RiskAlert[] = [];
+  for (let i = 0; i < count; i++) {
+    const template = riskTemplates[i % riskTemplates.length];
+    const isOld = i > 1;
+    const status = isOld
+      ? i % 3 === 0
+        ? 'resolved'
+        : i % 3 === 1
+        ? 'false_alarm'
+        : 'resolved'
+      : i === 0
+      ? 'pending'
+      : 'processing';
+    const handler =
+      status !== 'pending'
+        ? ['运营小王', '场控小李', '运营小王', '技术小张'][i % 4]
+        : undefined;
+
+    const titleMap: Record<string, string> = {
+      fraud: '虚假宣传风险',
+      violence: '暴力内容风险',
+      copyright: '版权问题',
+      politics: '敏感政治言论',
+      porn: '色情内容风险',
+      other: '其他风险',
+    };
+
+    risks.push({
+      id: `${roomId}-risk-${i + 1}`,
+      roomId,
+      roomTitle,
+      title: titleMap[template.type] || '违规风险',
+      type: template.type,
+      level: template.level,
+      description: template.description,
+      timestamp: new Date(now.getTime() - (i + 1) * (i === 0 ? 60000 : 300000)).toISOString(),
+      status,
+      handler,
+      handleTime:
+        status !== 'pending'
+          ? new Date(now.getTime() - (i + 1) * 120000).toISOString()
+          : undefined,
+      notes:
+        status !== 'pending'
+          ? [
+              {
+                id: `${roomId}-note-${i + 1}`,
+                content:
+                  status === 'false_alarm'
+                    ? '核实为误报，已标记'
+                    : status === 'resolved'
+                    ? '已通知主播整改，问题已解决'
+                    : '正在处理中',
+                author: handler || '系统',
+                timestamp: new Date(
+                  now.getTime() - (i + 1) * 120000
+                ).toISOString(),
+              },
+            ]
+          : [],
+    });
+  }
+  return risks;
+};
+
+export const roomRisksData: Record<string, RiskAlert[]> = {
+  'room-001': generateRisksForRoom('room-001', '618年中大促 美妆专场', 2),
+  'room-002': generateRisksForRoom('room-002', '数码新品首发 限时优惠', 3),
+  'room-003': generateRisksForRoom('room-003', '美食探店 家乡味道', 1),
+  'room-004': generateRisksForRoom('room-004', '健身减脂 30天蜕变计划', 2),
+  'room-005': generateRisksForRoom('room-005', '服装穿搭 夏季新款', 4),
+  'room-006': generateRisksForRoom('room-006', '游戏直播 王者荣耀', 2),
+};
+
+export const staffResponsibleRooms: Record<string, string[]> = {
+  's-001': ['room-001', 'room-002', 'room-003'],
+  's-002': ['room-004', 'room-005'],
+  's-003': ['room-006', 'room-001'],
+  's-004': ['room-002', 'room-003'],
+  's-005': ['room-001', 'room-002', 'room-003', 'room-004', 'room-005', 'room-006'],
+  's-006': ['room-004', 'room-006'],
+  's-007': ['room-001', 'room-005'],
+  's-008': ['room-002', 'room-004', 'room-006'],
+};
+
+export const getRoomRisks = (roomId: string): RiskAlert[] => {
+  return roomRisksData[roomId] || [];
+};
+
+export const getAllRisks = (): RiskAlert[] => {
+  return Object.values(roomRisksData).flat();
+};
+
+export const getPendingRisksCount = (roomId: string): number => {
+  return getRoomRisks(roomId).filter((r) => r.status === 'pending').length;
+};
+
+export const getHighestRiskLevel = (roomId: string): RiskAlert['level'] | null => {
+  const risks = getRoomRisks(roomId).filter((r) => r.status !== 'resolved' && r.status !== 'false_alarm');
+  if (risks.length === 0) return null;
+  
+  const levelOrder: RiskAlert['level'][] = ['critical', 'high', 'medium', 'low'];
+  for (const level of levelOrder) {
+    if (risks.some((r) => r.level === level)) {
+      return level;
+    }
+  }
+  return null;
+};
+
+export const getStaffResponsibleRooms = (staffId: string): string[] => {
+  return staffResponsibleRooms[staffId] || [];
+};
+
+export const getStaffPendingRisks = (staffId: string): RiskAlert[] => {
+  const roomIds = getStaffResponsibleRooms(staffId);
+  return roomIds
+    .flatMap((roomId) => getRoomRisks(roomId))
+    .filter((r) => r.status === 'pending' || r.status === 'processing');
+};
 
 export const riskStats = {
   todayTotal: 28,

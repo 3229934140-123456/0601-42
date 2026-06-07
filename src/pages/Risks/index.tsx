@@ -2,177 +2,307 @@ import { useState, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   AlertTriangle,
+  Shield,
   Clock,
   CheckCircle,
   XCircle,
   MessageSquare,
-  Plus,
-  Filter,
   Search,
+  Filter,
+  Eye,
+  FileText,
+  User,
   AlertCircle,
-  Shield,
-  Zap,
-  Activity,
 } from 'lucide-react';
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-} from 'recharts';
 import { useAppStore } from '@/store/useAppStore';
-import { riskStats } from '@/data/risks';
-import StatCard from '@/components/common/StatCard';
+import { channels } from '@/data/channels';
 import {
-  formatNumber,
+  formatTime,
   formatDate,
   getRiskLevelText,
-  getRiskLevelColor,
-  getRiskLevelBg,
   getRiskTypeText,
-  getStatusText,
-  getStatusColor,
 } from '@/utils/format';
+import { generateLiveReport, downloadReport } from '@/utils/export';
 import { cn } from '@/lib/utils';
-import type { RiskLevel, RiskStatus } from '@/types';
+import type { Risk, RiskLevel, RiskStatus } from '@/types';
 
 const RisksPage = () => {
   const { id } = useParams<{ id: string }>();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
-  const riskAlerts = useAppStore((state) => state.riskAlerts);
-  const addRiskNote = useAppStore((state) => state.addRiskNote);
+  const getRoomRisks = useAppStore((state) => state.getRoomRisks);
   const updateRiskStatus = useAppStore((state) => state.updateRiskStatus);
+  const addRiskNote = useAppStore((state) => state.addRiskNote);
+  const operatorConclusions = useAppStore(
+    (state) => state.operatorConclusions
+  );
 
   const roomId = id || currentRoomId;
+  const room = channels.find((c) => c.id === roomId);
+  const risks = getRoomRisks(roomId);
 
-  const [selectedRiskId, setSelectedRiskId] = useState<string | null>(null);
+  const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
   const [levelFilter, setLevelFilter] = useState<RiskLevel | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<RiskStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [newNote, setNewNote] = useState('');
+  const [noteInput, setNoteInput] = useState('');
 
-  const roomRisks = useMemo(() => {
-    let result = riskAlerts;
-    
-    if (id) {
-      result = result.filter((r) => r.roomId === roomId);
-    }
+  const hasData = risks.length > 0;
+
+  const stats = useMemo(() => {
+    const pending = risks.filter((r) => r.status === 'pending').length;
+    const processing = risks.filter((r) => r.status === 'processing').length;
+    const resolved = risks.filter((r) => r.status === 'resolved').length;
+    const critical = risks.filter((r) => r.level === 'critical').length;
+
+    return { total: risks.length, pending, processing, resolved, critical };
+  }, [risks]);
+
+  const filteredRisks = useMemo(() => {
+    let result = [...risks].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
 
     if (levelFilter !== 'all') {
       result = result.filter((r) => r.level === levelFilter);
     }
-
     if (statusFilter !== 'all') {
       result = result.filter((r) => r.status === statusFilter);
     }
-
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
       result = result.filter(
         (r) =>
-          r.description.toLowerCase().includes(query) ||
-          r.roomTitle.toLowerCase().includes(query)
+          r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          r.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
-    return result.sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-  }, [riskAlerts, roomId, levelFilter, statusFilter, searchQuery, id]);
+    return result;
+  }, [risks, levelFilter, statusFilter, searchQuery]);
 
-  const selectedRisk = useMemo(
-    () => riskAlerts.find((r) => r.id === selectedRiskId),
-    [riskAlerts, selectedRiskId]
-  );
+  const getLevelColor = (level: RiskLevel) => {
+    switch (level) {
+      case 'critical':
+        return 'bg-red-500';
+      case 'high':
+        return 'bg-orange-500';
+      case 'medium':
+        return 'bg-yellow-500';
+      case 'low':
+        return 'bg-green-500';
+    }
+  };
 
-  const pendingCount = riskAlerts.filter((r) => r.status === 'pending').length;
+  const getLevelBgColor = (level: RiskLevel) => {
+    switch (level) {
+      case 'critical':
+        return 'bg-red-500/10 border-red-500/30 text-red-500';
+      case 'high':
+        return 'bg-orange-500/10 border-orange-500/30 text-orange-500';
+      case 'medium':
+        return 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500';
+      case 'low':
+        return 'bg-green-500/10 border-green-500/30 text-green-500';
+    }
+  };
+
+  const getStatusIcon = (status: RiskStatus) => {
+    switch (status) {
+      case 'pending':
+        return <Clock size={14} />;
+      case 'processing':
+        return <AlertTriangle size={14} />;
+      case 'resolved':
+        return <CheckCircle size={14} />;
+      case 'ignored':
+        return <XCircle size={14} />;
+    }
+  };
+
+  const handleExport = () => {
+    if (!room) return;
+
+    const comments = useAppStore.getState().getRoomComments(roomId);
+    const pinnedComments = comments.filter((c) => c.isPinned);
+    const products = useAppStore.getState().getRoomProducts(roomId);
+    const oralBroadcasts = useAppStore.getState().getRoomOralBroadcasts(roomId);
+    const frequentComments = useAppStore
+      .getState()
+      .getRoomFrequentComments(roomId);
+
+    const report = generateLiveReport({
+      room,
+      pinnedComments,
+      frequentComments: frequentComments.map((fc) => ({
+        keyword: fc.keyword,
+        count: fc.count,
+      })),
+      products,
+      oralBroadcasts,
+      risks,
+      operatorConclusion: operatorConclusions[roomId],
+    });
+
+    downloadReport(room.title, report);
+  };
 
   const handleAddNote = () => {
-    if (!selectedRiskId || !newNote.trim()) return;
-    addRiskNote(selectedRiskId, newNote, '运营小王');
-    setNewNote('');
+    if (!noteInput.trim() || !selectedRisk) return;
+    addRiskNote(roomId, selectedRisk.id, noteInput.trim(), '运营小张');
+    setNoteInput('');
+    const updated = getRoomRisks(roomId).find((r) => r.id === selectedRisk.id);
+    if (updated) setSelectedRisk(updated);
   };
 
-  const handleUpdateStatus = (status: RiskStatus) => {
-    if (!selectedRiskId) return;
-    updateRiskStatus(selectedRiskId, status, '运营小王');
+  const handleStatusChange = (status: RiskStatus) => {
+    if (!selectedRisk) return;
+    updateRiskStatus(roomId, selectedRisk.id, status);
+    const updated = getRoomRisks(roomId).find((r) => r.id === selectedRisk.id);
+    if (updated) setSelectedRisk(updated);
   };
 
-  const levelOptions: { value: RiskLevel | 'all'; label: string }[] = [
-    { value: 'all', label: '全部等级' },
-    { value: 'critical', label: '紧急' },
-    { value: 'high', label: '严重' },
-    { value: 'medium', label: '一般' },
-    { value: 'low', label: '轻微' },
-  ];
+  if (!hasData) {
+    return (
+      <div className="h-full flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-text-primary">风险监控</h2>
+            <p className="text-sm text-text-secondary mt-1">
+              {room ? `${room.title} - ` : ''}实时监控直播间违规风险，及时处理告警
+            </p>
+          </div>
+          <button
+            onClick={handleExport}
+            className="h-9 px-4 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition-colors flex items-center gap-2"
+          >
+            <FileText size={16} />
+            导出复盘
+          </button>
+        </div>
 
-  const statusOptions: { value: RiskStatus | 'all'; label: string }[] = [
-    { value: 'all', label: '全部状态' },
-    { value: 'pending', label: '待处理' },
-    { value: 'processing', label: '处理中' },
-    { value: 'resolved', label: '已解决' },
-    { value: 'false_alarm', label: '误报' },
-  ];
+        <div className="flex-1 flex flex-col items-center justify-center bg-bg-secondary rounded-xl border border-border">
+          <Shield size={64} className="text-green-500 mb-4 opacity-50" />
+          <h3 className="text-lg font-medium text-text-primary mb-2">
+            暂无风险告警
+          </h3>
+          <p className="text-sm text-text-secondary mb-6">
+            该直播间暂无风险记录，直播状态良好
+          </p>
+          <button className="h-10 px-5 rounded-lg border border-border text-text-secondary text-sm font-medium hover:text-text-primary hover:border-border-hover transition-colors">
+            查看风险规则配置
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-6 h-full">
+    <div className="h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-text-primary">风险监控</h2>
           <p className="text-sm text-text-secondary mt-1">
-            实时监控违规风险，记录处理备注
+            {room ? `${room.title} - ` : ''}实时监控直播间违规风险，及时处理告警
           </p>
         </div>
-        {pendingCount > 0 && (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/30">
-            <AlertTriangle size={18} className="text-red-500 animate-pulse" />
-            <span className="text-sm text-red-500 font-medium">
-              {pendingCount} 条待处理告警
-            </span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border">
+            {stats.pending > 0 && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm text-text-secondary">
+                  待处理:{' '}
+                  <span className="text-red-500 font-medium">
+                    {stats.pending}
+                  </span>
+                </span>
+              </>
+            )}
+            {stats.pending === 0 && (
+              <>
+                <span className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-sm text-text-secondary">
+                  全部已处理
+                </span>
+              </>
+            )}
           </div>
-        )}
+          <button
+            onClick={handleExport}
+            className="h-9 px-4 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition-colors flex items-center gap-2"
+          >
+            <FileText size={16} />
+            导出复盘
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          title="今日告警"
-          value={riskStats.todayTotal}
-          icon={AlertCircle}
-          color="red"
-          subtitle="较昨日 +15%"
-        />
-        <StatCard
-          title="待处理"
-          value={riskStats.pending}
-          icon={Clock}
-          color="orange"
-          subtitle="需及时处理"
-        />
-        <StatCard
-          title="已解决"
-          value={riskStats.resolved}
-          icon={CheckCircle}
-          color="green"
-          subtitle={`处理率 ${Math.round((riskStats.resolved / riskStats.todayTotal) * 100)}%`}
-        />
-        <StatCard
-          title="平均处理时效"
-          value={riskStats.avgHandleTime}
-          icon={Zap}
-          color="cyan"
-          subtitle="持续优化中"
-        />
+        <div className="bg-bg-secondary rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-500/10 flex items-center justify-center">
+              <AlertTriangle size={20} className="text-red-500" />
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">严重风险</p>
+              <p className="text-xl font-bold text-red-500">
+                {stats.critical}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-bg-secondary rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+              <Clock size={20} className="text-yellow-500" />
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">待处理</p>
+              <p className="text-xl font-bold text-yellow-500">
+                {stats.pending}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-bg-secondary rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+              <Shield size={20} className="text-blue-500" />
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">处理中</p>
+              <p className="text-xl font-bold text-blue-500">
+                {stats.processing}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-bg-secondary rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+              <CheckCircle size={20} className="text-green-500" />
+            </div>
+            <div>
+              <p className="text-sm text-text-secondary">已解决</p>
+              <p className="text-xl font-bold text-green-500">
+                {stats.resolved}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-bg-secondary rounded-xl border border-border overflow-hidden flex flex-col">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 flex-1 min-h-0">
+        <div className="lg:col-span-3 flex flex-col bg-bg-secondary rounded-xl border border-border overflow-hidden">
           <div className="p-4 border-b border-border">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between gap-4">
               <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
-                <Shield size={18} className="text-red-500" />
+                <AlertTriangle size={18} className="text-red-500" />
                 风险告警列表
               </h3>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <div className="relative">
                   <Search
                     size={14}
@@ -180,375 +310,248 @@ const RisksPage = () => {
                   />
                   <input
                     type="text"
-                    placeholder="搜索告警..."
+                    placeholder="搜索风险..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-44 h-8 pl-8 pr-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent/50"
+                    className="w-40 h-8 pl-8 pr-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent/50"
                   />
                 </div>
-                <select
-                  value={levelFilter}
-                  onChange={(e) =>
-                    setLevelFilter(e.target.value as RiskLevel | 'all')
-                  }
-                  className="h-8 px-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary focus:outline-none focus:border-accent/50"
-                >
-                  {levelOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
+                <div className="flex items-center gap-1 bg-bg-primary rounded-lg p-0.5 border border-border">
+                  {[
+                    { value: 'all', label: '全部' },
+                    { value: 'pending', label: '待处理' },
+                    { value: 'resolved', label: '已解决' },
+                  ].map((filter) => (
+                    <button
+                      key={filter.value}
+                      onClick={() =>
+                        setStatusFilter(filter.value as RiskStatus | 'all')
+                      }
+                      className={cn(
+                        'px-2.5 py-1 rounded-md text-xs font-medium transition-all',
+                        statusFilter === filter.value
+                          ? 'bg-accent/10 text-accent'
+                          : 'text-text-secondary hover:text-text-primary'
+                      )}
+                    >
+                      {filter.label}
+                    </button>
                   ))}
-                </select>
-                <select
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(e.target.value as RiskStatus | 'all')
-                  }
-                  className="h-8 px-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary focus:outline-none focus:border-accent/50"
-                >
-                  {statusOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto">
-            {roomRisks.length === 0 ? (
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {filteredRisks.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
-                <Shield size={48} className="mb-4 opacity-50" />
-                <p>暂无风险告警</p>
+                <AlertCircle size={40} className="mb-3 opacity-50" />
+                <p>没有匹配的风险</p>
               </div>
             ) : (
-              <div className="divide-y divide-border">
-                {roomRisks.map((risk) => (
-                  <div
-                    key={risk.id}
-                    onClick={() => setSelectedRiskId(risk.id)}
-                    className={cn(
-                      'p-4 cursor-pointer transition-all',
-                      selectedRiskId === risk.id
-                        ? 'bg-accent/5 border-l-2 border-accent'
-                        : 'hover:bg-bg-primary/50 border-l-2 border-transparent'
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          'shrink-0 w-10 h-10 rounded-lg flex items-center justify-center',
-                          getRiskLevelBg(risk.level)
-                        )}
-                      >
-                        <AlertTriangle
-                          size={20}
-                          className={getRiskLevelColor(risk.level)}
-                        />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
+              filteredRisks.map((risk) => (
+                <div
+                  key={risk.id}
+                  onClick={() => setSelectedRisk(risk)}
+                  className={cn(
+                    'p-4 rounded-xl border cursor-pointer transition-all',
+                    selectedRisk?.id === risk.id
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border bg-bg-primary hover:border-accent/50'
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={cn(
+                        'w-2 h-2 rounded-full mt-1.5 shrink-0',
+                        getLevelColor(risk.level)
+                      )}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <h4 className="font-medium text-text-primary text-sm">
+                          {risk.title}
+                        </h4>
+                        <div className="flex items-center gap-2 shrink-0">
                           <span
                             className={cn(
-                              'px-2 py-0.5 rounded text-xs font-medium',
-                              getRiskLevelBg(risk.level),
-                              getRiskLevelColor(risk.level)
+                              'px-2 py-0.5 rounded text-xs font-medium border',
+                              getLevelBgColor(risk.level)
                             )}
                           >
                             {getRiskLevelText(risk.level)}
                           </span>
-                          <span className="text-xs text-text-tertiary">
-                            {getRiskTypeText(risk.type)}
-                          </span>
-                          <span
-                            className={cn(
-                              'text-xs ml-auto font-medium',
-                              getStatusColor(risk.status)
-                            )}
-                          >
-                            {getStatusText(risk.status)}
-                          </span>
                         </div>
-                        <p className="text-sm text-text-primary mt-2 line-clamp-2">
-                          {risk.description}
-                        </p>
-                        <div className="mt-2 flex items-center justify-between text-xs text-text-tertiary">
-                          <span>{risk.roomTitle}</span>
-                          <span>{formatDate(risk.timestamp)}</span>
-                        </div>
+                      </div>
+                      <p className="text-xs text-text-secondary mt-1 line-clamp-2">
+                        {risk.description}
+                      </p>
+                      <div className="mt-2 flex items-center gap-4 text-xs text-text-tertiary">
+                        <span className="flex items-center gap-1">
+                          <Clock size={12} />
+                          {formatTime(risk.timestamp)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          {getStatusIcon(risk.status)}
+                          {risk.status === 'pending'
+                            ? '待处理'
+                            : risk.status === 'processing'
+                            ? '处理中'
+                            : risk.status === 'resolved'
+                            ? '已解决'
+                            : '已忽略'}
+                        </span>
+                        {risk.handler && (
+                          <span className="flex items-center gap-1">
+                            <User size={12} />
+                            {risk.handler}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))
             )}
           </div>
         </div>
 
-        <div className="bg-bg-secondary rounded-xl border border-border overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-border">
-            <h3 className="text-base font-semibold text-text-primary">
-              风险详情
-            </h3>
-          </div>
-
+        <div className="lg:col-span-2 flex flex-col bg-bg-secondary rounded-xl border border-border overflow-hidden">
           {selectedRisk ? (
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-4">
-                <div
-                  className={cn(
-                    'p-4 rounded-lg border',
-                    getRiskLevelBg(selectedRisk.level),
-                    `border-${
-                      selectedRisk.level === 'critical'
-                        ? 'red'
-                        : selectedRisk.level === 'high'
-                        ? 'orange'
-                        : selectedRisk.level === 'medium'
-                        ? 'yellow'
-                        : 'green'
-                    }-500/30`
-                  )}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertTriangle
-                      size={20}
-                      className={getRiskLevelColor(selectedRisk.level)}
-                    />
-                    <span
-                      className={cn(
-                        'font-semibold',
-                        getRiskLevelColor(selectedRisk.level)
-                      )}
-                    >
-                      {getRiskLevelText(selectedRisk.level)}风险
-                    </span>
-                  </div>
-                  <p className="text-sm text-text-primary">
+            <>
+              <div className="p-4 border-b border-border">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-semibold text-text-primary flex items-center gap-2">
+                    <Eye size={18} className="text-accent" />
+                    风险详情
+                  </h3>
+                  <span
+                    className={cn(
+                      'px-2.5 py-1 rounded text-xs font-medium border',
+                      getLevelBgColor(selectedRisk.level)
+                    )}
+                  >
+                    {getRiskLevelText(selectedRisk.level)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div>
+                  <h4 className="text-sm font-medium text-text-primary">
+                    {selectedRisk.title}
+                  </h4>
+                  <p className="text-sm text-text-secondary mt-2 leading-relaxed">
                     {selectedRisk.description}
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="p-3 rounded-lg bg-bg-primary border border-border">
-                    <div className="text-xs text-text-tertiary mb-1">
-                      直播间
-                    </div>
-                    <div className="text-sm text-text-primary font-medium truncate">
-                      {selectedRisk.roomTitle}
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-bg-primary border border-border">
-                    <div className="text-xs text-text-tertiary mb-1">
-                      风险类型
-                    </div>
-                    <div className="text-sm text-text-primary font-medium">
+                  <div className="p-3 rounded-lg bg-bg-primary">
+                    <p className="text-xs text-text-tertiary">风险类型</p>
+                    <p className="text-sm font-medium text-text-primary mt-1">
                       {getRiskTypeText(selectedRisk.type)}
-                    </div>
+                    </p>
                   </div>
-                  <div className="p-3 rounded-lg bg-bg-primary border border-border">
-                    <div className="text-xs text-text-tertiary mb-1">
-                      发现时间
-                    </div>
-                    <div className="text-sm text-text-primary font-medium">
+                  <div className="p-3 rounded-lg bg-bg-primary">
+                    <p className="text-xs text-text-tertiary">发现时间</p>
+                    <p className="text-sm font-medium text-text-primary mt-1">
                       {formatDate(selectedRisk.timestamp)}
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg bg-bg-primary border border-border">
-                    <div className="text-xs text-text-tertiary mb-1">
-                      当前状态
-                    </div>
-                    <div
-                      className={cn(
-                        'text-sm font-medium',
-                        getStatusColor(selectedRisk.status)
-                      )}
-                    >
-                      {getStatusText(selectedRisk.status)}
-                    </div>
+                    </p>
                   </div>
                 </div>
 
-                {selectedRisk.handler && (
-                  <div className="p-3 rounded-lg bg-bg-primary border border-border">
-                    <div className="text-xs text-text-tertiary mb-1">
-                      处理人
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-text-primary font-medium">
-                        {selectedRisk.handler}
-                      </span>
-                      <span className="text-xs text-text-tertiary">
-                        {selectedRisk.handleTime &&
-                          formatDate(selectedRisk.handleTime)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-medium text-text-primary flex items-center gap-2">
-                      <MessageSquare size={16} className="text-accent" />
-                      处理备注
-                    </h4>
-                  </div>
-                  <div className="space-y-2 mb-4">
-                    {selectedRisk.notes.length === 0 ? (
-                      <p className="text-xs text-text-tertiary text-center py-3">
-                        暂无处理备注
-                      </p>
-                    ) : (
-                      selectedRisk.notes.map((note) => (
-                        <div
-                          key={note.id}
-                          className="p-3 rounded-lg bg-bg-primary border border-border"
+                <div className="p-3 rounded-lg bg-bg-primary">
+                  <p className="text-xs text-text-tertiary">处理状态</p>
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    {(['pending', 'processing', 'resolved', 'ignored'] as const).map(
+                      (status) => (
+                        <button
+                          key={status}
+                          onClick={() => handleStatusChange(status)}
+                          className={cn(
+                            'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5',
+                            selectedRisk.status === status
+                              ? 'bg-accent text-white'
+                              : 'bg-bg-secondary text-text-secondary hover:text-text-primary'
+                          )}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-accent">
-                              {note.author}
-                            </span>
-                            <span className="text-xs text-text-tertiary">
-                              {formatDate(note.timestamp)}
-                            </span>
+                          {getStatusIcon(status)}
+                          {status === 'pending'
+                            ? '待处理'
+                            : status === 'processing'
+                            ? '处理中'
+                            : status === 'resolved'
+                            ? '已解决'
+                            : '已忽略'}
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-lg bg-bg-primary">
+                  <p className="text-xs text-text-tertiary mb-2">处理记录</p>
+                  <div className="space-y-3">
+                    {selectedRisk.notes.length === 0 ? (
+                      <p className="text-sm text-text-tertiary">暂无处理备注</p>
+                    ) : (
+                      selectedRisk.notes.map((note, index) => (
+                        <div
+                          key={index}
+                          className="flex items-start gap-2 pb-3 border-b border-border last:border-0 last:pb-0"
+                        >
+                          <div className="w-6 h-6 rounded-full bg-accent/20 shrink-0 flex items-center justify-center">
+                            <User size={12} className="text-accent" />
                           </div>
-                          <p className="text-sm text-text-primary">
-                            {note.content}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-text-primary">
+                                {note.author}
+                              </span>
+                              <span className="text-xs text-text-tertiary">
+                                {formatTime(note.timestamp)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-text-secondary mt-1">
+                              {note.content}
+                            </p>
+                          </div>
                         </div>
                       ))
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newNote}
-                      onChange={(e) => setNewNote(e.target.value)}
-                      placeholder="添加处理备注..."
-                      onKeyDown={(e) =>
-                        e.key === 'Enter' && handleAddNote()
-                      }
-                      className="flex-1 h-9 px-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent/50"
-                    />
-                    <button
-                      onClick={handleAddNote}
-                      className="h-9 px-4 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-1"
-                    >
-                      <Plus size={16} />
-                      添加
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-border">
-                  <h4 className="text-sm font-medium text-text-primary mb-3">
-                    操作
-                  </h4>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleUpdateStatus('processing')}
-                      className="h-9 rounded-lg border border-yellow-500/30 text-yellow-500 text-sm font-medium hover:bg-yellow-500/10 transition-colors"
-                    >
-                      开始处理
-                    </button>
-                    <button
-                      onClick={() => handleUpdateStatus('resolved')}
-                      className="h-9 rounded-lg border border-green-500/30 text-green-500 text-sm font-medium hover:bg-green-500/10 transition-colors"
-                    >
-                      标记已解决
-                    </button>
-                    <button
-                      onClick={() => handleUpdateStatus('false_alarm')}
-                      className="h-9 rounded-lg border border-gray-500/30 text-text-secondary text-sm font-medium hover:bg-gray-500/10 transition-colors"
-                    >
-                      标记误报
-                    </button>
-                    <button className="h-9 rounded-lg bg-red-500/10 border border-red-500/30 text-red-500 text-sm font-medium hover:bg-red-500/20 transition-colors">
-                      紧急处理
-                    </button>
-                  </div>
                 </div>
               </div>
-            </div>
+
+              <div className="p-4 border-t border-border">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="添加处理备注..."
+                    value={noteInput}
+                    onChange={(e) => setNoteInput(e.target.value)}
+                    onKeyDown={(e) =>
+                      e.key === 'Enter' && handleAddNote()
+                    }
+                    className="flex-1 h-9 px-3 rounded-lg bg-bg-primary border border-border text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-accent/50"
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    disabled={!noteInput.trim()}
+                    className="h-9 px-4 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    发送
+                  </button>
+                </div>
+              </div>
+            </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-text-tertiary">
-              <Activity size={48} className="mb-4 opacity-50" />
-              <p>选择一条告警查看详情</p>
+              <MessageSquare size={48} className="mb-3 opacity-50" />
+              <p>选择一条风险查看详情</p>
             </div>
           )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-bg-secondary rounded-xl border border-border p-5">
-          <h3 className="text-base font-semibold text-text-primary mb-4">
-            风险类型分布
-          </h3>
-          <div className="h-48 flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={riskStats.typeDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={2}
-                  dataKey="count"
-                >
-                  {riskStats.typeDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="ml-6 space-y-2">
-              {riskStats.typeDistribution.map((item) => (
-                <div key={item.type} className="flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: item.color }}
-                  />
-                  <span className="text-sm text-text-secondary">
-                    {item.type}
-                  </span>
-                  <span className="text-sm text-text-primary font-medium ml-auto">
-                    {item.count}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-bg-secondary rounded-xl border border-border p-5">
-          <h3 className="text-base font-semibold text-text-primary mb-4">
-            风险等级分布
-          </h3>
-          <div className="space-y-4">
-            {riskStats.levelDistribution.map((item) => (
-              <div key={item.level}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm text-text-secondary">
-                    {item.level}
-                  </span>
-                  <span className="text-sm font-medium text-text-primary">
-                    {item.count} 条
-                  </span>
-                </div>
-                <div className="h-2 bg-bg-primary rounded-full overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${(item.count / riskStats.todayTotal) * 100}%`,
-                      backgroundColor: item.color,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
     </div>

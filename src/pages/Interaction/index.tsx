@@ -6,32 +6,45 @@ import {
   ThumbsUp,
   MessageSquare,
   TrendingUp,
-  Filter,
   Search,
-  MoreHorizontal,
   EyeOff,
+  MoreHorizontal,
+  Plus,
+  FileText,
   AlertCircle,
 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
+import { channels } from '@/data/channels';
 import {
   formatTime,
   formatNumber,
 } from '@/utils/format';
+import { generateLiveReport, downloadReport } from '@/utils/export';
 import { cn } from '@/lib/utils';
 
 const InteractionPage = () => {
   const { id } = useParams<{ id: string }>();
   const currentRoomId = useAppStore((state) => state.currentRoomId);
-  const comments = useAppStore((state) => state.comments);
-  const frequentComments = useAppStore((state) => state.frequentComments);
   const pinComment = useAppStore((state) => state.pinComment);
   const unpinComment = useAppStore((state) => state.unpinComment);
+  const getRoomComments = useAppStore((state) => state.getRoomComments);
+  const getRoomFrequentComments = useAppStore(
+    (state) => state.getRoomFrequentComments
+  );
+  const operatorConclusions = useAppStore(
+    (state) => state.operatorConclusions
+  );
 
   const roomId = id || currentRoomId;
+  const room = channels.find((c) => c.id === roomId);
+  const comments = getRoomComments(roomId);
+  const frequentComments = getRoomFrequentComments(roomId);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [commentFilter, setCommentFilter] = useState<'all' | 'question' | 'pinned'>('all');
-  const [highlightKeywords, setHighlightKeywords] = useState(['链接', '价格', '优惠']);
+  const [highlightKeywords] = useState(['链接', '价格', '优惠']);
+
+  const hasData = comments.length > 0;
 
   const pinnedComments = useMemo(
     () => comments.filter((c) => c.isPinned),
@@ -74,22 +87,94 @@ const InteractionPage = () => {
     return result;
   };
 
+  const handleExport = () => {
+    if (!room) return;
+    
+    const products = useAppStore.getState().getRoomProducts(roomId);
+    const oralBroadcasts = useAppStore.getState().getRoomOralBroadcasts(roomId);
+    const risks = useAppStore.getState().getRoomRisks(roomId);
+
+    const report = generateLiveReport({
+      room,
+      pinnedComments,
+      frequentComments: frequentComments.map((fc) => ({
+        keyword: fc.keyword,
+        count: fc.count,
+      })),
+      products,
+      oralBroadcasts,
+      risks,
+      operatorConclusion: operatorConclusions[roomId],
+    });
+
+    downloadReport(room.title, report);
+  };
+
+  if (!hasData) {
+    return (
+      <div className="h-full flex flex-col gap-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-text-primary">互动管理</h2>
+            <p className="text-sm text-text-secondary mt-1">
+              {room ? `${room.title} - ` : ''}管理观众评论、置顶问题、整理高频话题
+            </p>
+          </div>
+          <button
+            onClick={handleExport}
+            className="h-9 px-4 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition-colors flex items-center gap-2"
+          >
+            <FileText size={16} />
+            导出复盘
+          </button>
+        </div>
+
+        <div className="flex-1 flex flex-col items-center justify-center bg-bg-secondary rounded-xl border border-border">
+          <MessageSquare size={64} className="text-text-tertiary mb-4 opacity-50" />
+          <h3 className="text-lg font-medium text-text-primary mb-2">
+            暂无互动数据
+          </h3>
+          <p className="text-sm text-text-secondary mb-6">
+            该直播间暂无评论数据，等待开播后会自动同步
+          </p>
+          <div className="flex gap-3">
+            <button className="h-10 px-5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors flex items-center gap-2">
+              <Plus size={16} />
+              手动添加评论
+            </button>
+            <button className="h-10 px-5 rounded-lg border border-border text-text-secondary text-sm font-medium hover:text-text-primary hover:border-border-hover transition-colors">
+              去频道墙看看
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-text-primary">互动管理</h2>
           <p className="text-sm text-text-secondary mt-1">
-            管理观众评论、置顶问题、整理高频话题
+            {room ? `${room.title} - ` : ''}管理观众评论、置顶问题、整理高频话题
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-2 bg-bg-secondary rounded-lg border border-border">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             <span className="text-sm text-text-secondary">
-              实时弹幕流 · <span className="text-text-primary font-medium">328</span> 条/分
+              实时弹幕流 ·{' '}
+              <span className="text-text-primary font-medium">328</span> 条/分
             </span>
           </div>
+          <button
+            onClick={handleExport}
+            className="h-9 px-4 rounded-lg bg-accent/10 text-accent text-sm font-medium hover:bg-accent/20 transition-colors flex items-center gap-2"
+          >
+            <FileText size={16} />
+            导出复盘
+          </button>
         </div>
       </div>
 
@@ -127,7 +212,7 @@ const InteractionPage = () => {
                             {comment.userName}
                           </span>
                           <button
-                            onClick={() => unpinComment(comment.id)}
+                            onClick={() => unpinComment(roomId, comment.id)}
                             className="text-xs text-text-secondary hover:text-accent flex items-center gap-1"
                           >
                             <PinOff size={12} />
@@ -170,10 +255,10 @@ const InteractionPage = () => {
                     </span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-text-primary">
+                        <span className="text-sm font-medium text-text-primary truncate">
                           {item.keyword}
                         </span>
-                        <span className="text-xs text-accent">
+                        <span className="text-xs text-accent ml-2 shrink-0">
                           {item.count} 次提及
                         </span>
                       </div>
@@ -233,107 +318,111 @@ const InteractionPage = () => {
                     </button>
                   ))}
                 </div>
-                <button className="p-2 rounded-lg bg-bg-primary border border-border text-text-secondary hover:text-text-primary transition-colors">
-                  <Filter size={16} />
-                </button>
               </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {filteredComments.map((comment) => (
-              <div
-                key={comment.id}
-                className={cn(
-                  'p-3 rounded-lg border transition-all',
-                  comment.isPinned
-                    ? 'bg-accent/5 border-accent/30'
-                    : comment.type === 'gift'
-                    ? 'bg-yellow-500/5 border-yellow-500/30'
-                    : comment.type === 'system'
-                    ? 'bg-gray-500/5 border-gray-500/30'
-                    : hasHighlight(comment.content)
-                    ? 'bg-yellow-500/5 border-yellow-500/20'
-                    : 'bg-bg-primary border-border hover:border-border-hover'
-                )}
-              >
-                <div className="flex items-start gap-3">
-                  {comment.userAvatar ? (
-                    <img
-                      src={comment.userAvatar}
-                      alt={comment.userName}
-                      className="w-9 h-9 rounded-full shrink-0"
-                    />
-                  ) : (
-                    <div className="w-9 h-9 rounded-full bg-accent/20 shrink-0 flex items-center justify-center">
-                      <AlertCircle size={16} className="text-accent" />
-                    </div>
+            {filteredComments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-text-tertiary">
+                <AlertCircle size={40} className="mb-3 opacity-50" />
+                <p>没有匹配的评论</p>
+              </div>
+            ) : (
+              filteredComments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className={cn(
+                    'p-3 rounded-lg border transition-all',
+                    comment.isPinned
+                      ? 'bg-accent/5 border-accent/30'
+                      : comment.type === 'gift'
+                      ? 'bg-yellow-500/5 border-yellow-500/30'
+                      : comment.type === 'system'
+                      ? 'bg-gray-500/5 border-gray-500/30'
+                      : hasHighlight(comment.content)
+                      ? 'bg-yellow-500/5 border-yellow-500/20'
+                      : 'bg-bg-primary border-border hover:border-border-hover'
                   )}
+                >
+                  <div className="flex items-start gap-3">
+                    {comment.userAvatar ? (
+                      <img
+                        src={comment.userAvatar}
+                        alt={comment.userName}
+                        className="w-9 h-9 rounded-full shrink-0"
+                      />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-accent/20 shrink-0 flex items-center justify-center">
+                        <AlertCircle size={16} className="text-accent" />
+                      </div>
+                    )}
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-text-primary">
-                        {comment.userName}
-                      </span>
-                      {comment.type === 'gift' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-500">
-                          礼物
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-text-primary">
+                          {comment.userName}
                         </span>
-                      )}
-                      {comment.type === 'question' && (
-                        <span className="px-1.5 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400">
-                          提问
+                        {comment.type === 'gift' && (
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-yellow-500/20 text-yellow-500">
+                            礼物
+                          </span>
+                        )}
+                        {comment.type === 'question' && (
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400">
+                            提问
+                          </span>
+                        )}
+                        {comment.isPinned && (
+                          <span className="px-1.5 py-0.5 rounded text-xs bg-accent/20 text-accent flex items-center gap-1">
+                            <Pin size={10} />
+                            已置顶
+                          </span>
+                        )}
+                        <span className="text-xs text-text-tertiary ml-auto">
+                          {formatTime(comment.timestamp)}
                         </span>
-                      )}
-                      {comment.isPinned && (
-                        <span className="px-1.5 py-0.5 rounded text-xs bg-accent/20 text-accent flex items-center gap-1">
-                          <Pin size={10} />
-                          已置顶
-                        </span>
-                      )}
-                      <span className="text-xs text-text-tertiary ml-auto">
-                        {formatTime(comment.timestamp)}
-                      </span>
-                    </div>
-                    <p
-                      className={cn(
-                        'text-sm mt-1 leading-relaxed',
-                        comment.type === 'system'
-                          ? 'text-text-tertiary'
-                          : 'text-text-primary'
-                      )}
-                      dangerouslySetInnerHTML={{
-                        __html: hasHighlight(comment.content)
-                          ? highlightText(comment.content)
-                          : comment.content,
-                      }}
-                    />
-                    <div className="mt-2 flex items-center gap-4">
-                      <button className="flex items-center gap-1 text-xs text-text-tertiary hover:text-accent transition-colors">
-                        <ThumbsUp size={12} />
-                        {formatNumber(comment.likeCount)}
-                      </button>
-                      {!comment.isPinned && comment.type === 'question' && (
-                        <button
-                          onClick={() => pinComment(comment.id)}
-                          className="flex items-center gap-1 text-xs text-text-tertiary hover:text-accent transition-colors"
-                        >
-                          <Pin size={12} />
-                          置顶
+                      </div>
+                      <p
+                        className={cn(
+                          'text-sm mt-1 leading-relaxed',
+                          comment.type === 'system'
+                            ? 'text-text-tertiary'
+                            : 'text-text-primary'
+                        )}
+                        dangerouslySetInnerHTML={{
+                          __html: hasHighlight(comment.content)
+                            ? highlightText(comment.content)
+                            : comment.content,
+                        }}
+                      />
+                      <div className="mt-2 flex items-center gap-4">
+                        <button className="flex items-center gap-1 text-xs text-text-tertiary hover:text-accent transition-colors">
+                          <ThumbsUp size={12} />
+                          {formatNumber(comment.likeCount)}
                         </button>
-                      )}
-                      <button className="flex items-center gap-1 text-xs text-text-tertiary hover:text-red-500 transition-colors">
-                        <EyeOff size={12} />
-                        屏蔽
-                      </button>
-                      <button className="ml-auto p-1 rounded hover:bg-bg-secondary text-text-tertiary hover:text-text-secondary">
-                        <MoreHorizontal size={14} />
-                      </button>
+                        {!comment.isPinned && comment.type === 'question' && (
+                          <button
+                            onClick={() => pinComment(roomId, comment.id)}
+                            className="flex items-center gap-1 text-xs text-text-tertiary hover:text-accent transition-colors"
+                          >
+                            <Pin size={12} />
+                            置顶
+                          </button>
+                        )}
+                        <button className="flex items-center gap-1 text-xs text-text-tertiary hover:text-red-500 transition-colors">
+                          <EyeOff size={12} />
+                          屏蔽
+                        </button>
+                        <button className="ml-auto p-1 rounded hover:bg-bg-secondary text-text-tertiary hover:text-text-secondary">
+                          <MoreHorizontal size={14} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

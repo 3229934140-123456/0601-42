@@ -1,4 +1,4 @@
-import type { AnalyticsData } from '@/types';
+import type { AnalyticsData, ViewerTrendPoint } from '@/types';
 
 const generateTrendData = (baseValue: number, variance: number, count: number) => {
   const data = [];
@@ -133,3 +133,14 @@ export const conversionTrendData = [
   { time: '21:00', 关注转化: 620, 商品点击: 5800, 成交转化: 225 },
   { time: '22:00', 关注转化: 450, 商品点击: 4000, 成交转化: 168 },
 ];
+
+export const roomViewerTrends: Record<string, ViewerTrendPoint[]> = analyticsData.reduce(
+  (acc, data) => {
+    acc[data.roomId] = data.viewerTrend.map((tp) => ({
+      time: tp.time,
+      viewers: tp.value,
+    }));
+    return acc;
+  },
+  {} as Record<string, ViewerTrendPoint[]>
+);
