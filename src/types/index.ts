@@ -193,6 +193,19 @@ export interface TimelineItem {
   targetPage: string;
   targetId?: string;
   level?: string;
+  operator?: string;
+  action?: string;
+  oralId?: string;
+}
+
+export type HandoverRiskStatus = 'pending' | 'taken' | 'resolved' | 'suspended';
+
+export interface HandoverRiskItem {
+  roomId: string;
+  riskId: string;
+  status: HandoverRiskStatus;
+  handlerName?: string;
+  handledAt?: string;
 }
 
 export interface ShiftHandover {
@@ -203,6 +216,6 @@ export interface ShiftHandover {
   handlerId: string;
   note: string;
   keyRoomIds: string[];
-  pendingRiskIds: { roomId: string; riskId: string }[];
+  pendingRiskIds: HandoverRiskItem[];
   createdAt: string;
 }

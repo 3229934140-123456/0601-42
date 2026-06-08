@@ -171,13 +171,24 @@ const LiveDetail = () => {
     targetPage: string;
     targetId?: string;
     type?: string;
+    oralId?: string;
   }) => {
-    const { targetPage, targetId, type } = item;
+    const { targetPage, targetId, type, oralId } = item;
     if (targetPage === 'live') {
       navigate(`/live/${roomId}`);
     } else if (targetId) {
-      const paramKey = type?.startsWith('risk') ? 'riskId' : type?.startsWith('product') || type?.startsWith('oral') ? 'productId' : type === 'pinned_comment' ? 'commentId' : '';
-      const query = paramKey ? `?${paramKey}=${targetId}` : '';
+      const params = new URLSearchParams();
+      if (type?.startsWith('risk')) {
+        params.set('riskId', targetId);
+      } else if (type?.startsWith('product')) {
+        params.set('productId', targetId);
+      } else if (type === 'oral_broadcast') {
+        params.set('productId', targetId);
+        if (oralId) params.set('oralId', oralId);
+      } else if (type === 'pinned_comment') {
+        params.set('commentId', targetId);
+      }
+      const query = params.toString() ? `?${params.toString()}` : '';
       navigate(`/${targetPage}/${roomId}${query}`);
     } else {
       navigate(`/${targetPage}/${roomId}`);
@@ -684,7 +695,16 @@ const LiveDetail = () => {
                       {formatTime(item.timestamp)}
                     </span>
                   </div>
-                  <p className="text-xs text-text-secondary mt-1 line-clamp-2">
+                  {(item.operator || item.action) && (
+                    <div className="flex items-center gap-1.5 mt-1.5">
+                      <User size={12} className="text-text-tertiary" />
+                      <span className="text-xs text-text-tertiary">
+                        {item.operator || '未知操作人'}
+                        {item.action && ` · ${item.action}`}
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-xs text-text-secondary mt-2 line-clamp-2">
                     {item.description}
                   </p>
                 </div>

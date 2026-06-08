@@ -31,6 +31,8 @@ export const generateTimeline = (
       timestamp: comment.timestamp,
       targetPage: 'interaction',
       targetId: comment.id,
+      operator: '运营',
+      action: '置顶了该问题',
     });
   });
 
@@ -44,6 +46,8 @@ export const generateTimeline = (
         timestamp: product.explainStartTime,
         targetPage: 'products',
         targetId: product.id,
+        operator: '主播',
+        action: '开始讲解',
       });
     }
   });
@@ -56,7 +60,10 @@ export const generateTimeline = (
       description: oral.content,
       timestamp: oral.timestamp,
       targetPage: 'products',
-      targetId: oral.id,
+      targetId: oral.productId || oral.id,
+      oralId: oral.id,
+      operator: '主播',
+      action: oral.type === 'discount' ? '优惠口播' : '讲解口播',
     });
   });
 
@@ -70,6 +77,8 @@ export const generateTimeline = (
       targetPage: 'risks',
       targetId: risk.id,
       level: risk.level,
+      operator: '系统',
+      action: '检测到风险',
     });
 
     risk.notes.forEach((note, noteIndex) => {
@@ -77,10 +86,12 @@ export const generateTimeline = (
         id: `risk-note-${risk.id}-${noteIndex}`,
         type: 'risk_note',
         title: '风险处理备注',
-        description: `${note.author}：${note.content}`,
+        description: note.content,
         timestamp: note.timestamp,
         targetPage: 'risks',
         targetId: risk.id,
+        operator: note.author,
+        action: '添加处理备注',
       });
     });
   });
@@ -94,6 +105,8 @@ export const generateTimeline = (
       description: operatorConclusion,
       timestamp: conclusionTime,
       targetPage: 'live',
+      operator: '运营',
+      action: '保存复盘总结',
     });
   }
 

@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Star,
   FileText,
+  Eye,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '@/store/useAppStore';
@@ -39,6 +40,7 @@ const SchedulePage = () => {
   const updateRiskStatus = useAppStore((state) => state.updateRiskStatus);
   const addShiftHandover = useAppStore((state) => state.addShiftHandover);
   const getShiftHandovers = useAppStore((state) => state.getShiftHandovers);
+  const updateHandoverRiskStatus = useAppStore((state) => state.updateHandoverRiskStatus);
 
   const allPendingRisks: (Risk & { roomId: string })[] = [];
   channelsData.forEach((room) => {
@@ -134,7 +136,15 @@ const SchedulePage = () => {
     if (!selectedShift) return null;
     const shiftOrder = ['早班', '中班', '晚班'];
     const currentIdx = shiftOrder.indexOf(selectedShift);
-    if (currentIdx <= 0) return null;
+
+    if (currentIdx === 0) {
+      const prevDate = new Date(selectedDate);
+      prevDate.setDate(prevDate.getDate() - 1);
+      const prevDateStr = prevDate.toISOString().split('T')[0];
+      const prevHandovers = getShiftHandovers(prevDateStr, '晚班');
+      return prevHandovers[prevHandovers.length - 1] || null;
+    }
+
     const prevShift = shiftOrder[currentIdx - 1];
     const prevHandovers = getShiftHandovers(todayDateStr, prevShift);
     return prevHandovers[prevHandovers.length - 1] || null;
@@ -178,12 +188,21 @@ const SchedulePage = () => {
       handlerId: selectedStaff.id,
       note: handoverNote,
       keyRoomIds: handoverKeyRooms,
-      pendingRiskIds,
+      pendingRiskIds: pendingRiskIds as any,
     });
 
     setHandoverNote('');
     setHandoverKeyRooms([]);
     setHandoverRisks([]);
+  };
+
+  const handleHandoverRiskStatus = (
+    handoverId: string,
+    riskId: string,
+    status: string
+  ) => {
+    if (!selectedStaff) return;
+    updateHandoverRiskStatus(handoverId, riskId, status, selectedStaff.name);
   };
 
   const riskLevelColors: Record<string, string> = {
@@ -435,7 +454,16 @@ const SchedulePage = () => {
                 <div className="mb-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
-                      ⬅️ 上一班交接
+                      ⬅️ {(() => {
+                        const shiftOrder = ['早班', '中班', '晚班'];
+                        const currentIdx = shiftOrder.indexOf(selectedShift || '');
+                        if (currentIdx === 0) {
+                          const prevDate = new Date(selectedDate);
+                          prevDate.setDate(prevDate.getDate() - 1);
+                          return `昨日晚班交接 (${prevDate.getMonth() + 1}/${prevDate.getDate()})`;
+                        }
+                        return `${shiftOrder[currentIdx - 1]}交接`;
+                      })()}
                     </span>
                     <span className="text-xs text-text-tertiary">
                       {previousShiftHandover.handlerName} ·{' '}
@@ -448,38 +476,139 @@ const SchedulePage = () => {
                   <p className="text-sm text-text-secondary">
                     {previousShiftHandover.note}
                   </p>
+                  {previousShiftHandover.keyRoomIds.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-yellow-500/20">
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1.5">
+                        重点直播间 ({previousShiftHandover.keyRoomIds.length})
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {previousShiftHandover.keyRoomIds.map((roomId) => {
+                          const room = channels.find((c) => c.id === roomId);
+                          if (!room) return null;
+                          return (
+                            <div
+                              key={roomId}
+                              onClick={() => navigate(`/live/${roomId}`)}
+                              className="px-2 py-1 rounded text-xs bg-yellow-500/10 text-yellow-700 dark:text-yellow-300 cursor-pointer hover:bg-yellow-500/20 transition-colors flex items-center gap-1"
+                            >
+                              <Eye size={10} />
+                              {room.title}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                   {previousShiftHandover.pendingRiskIds.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-yellow-500/20">
                       <p className="text-xs text-yellow-600 dark:text-yellow-400 mb-1.5">
                         待跟进风险 ({previousShiftHandover.pendingRiskIds.length})
                       </p>
-                      <div className="space-y-1">
-                        {previousShiftHandover.pendingRiskIds.slice(0, 3).map((item) => {
+                      <div className="space-y-2">
+                        {previousShiftHandover.pendingRiskIds.map((item) => {
                           const risk = allPendingRisks.find(
                             (r) => r.roomId === item.roomId && r.id === item.riskId
                           );
-                          if (!risk) return null;
+                          const statusLabels: Record<string, string> = {
+                            pending: '待处理',
+                            taken: '已接手',
+                            resolved: '已处理',
+                            suspended: '挂起',
+                          };
+                          const statusColors: Record<string, string> = {
+                            pending: 'bg-gray-500',
+                            taken: 'bg-blue-500',
+                            resolved: 'bg-green-500',
+                            suspended: 'bg-yellow-500',
+                          };
                           return (
                             <div
                               key={`${item.roomId}-${item.riskId}`}
-                              onClick={() =>
-                                navigate(
-                                  `/risks/${item.roomId}?riskId=${item.riskId}`
-                                )
-                              }
-                              className="flex items-center justify-between text-xs cursor-pointer hover:bg-yellow-500/10 px-2 py-1 rounded"
+                              className="px-2 py-1.5 rounded hover:bg-yellow-500/10"
                             >
-                              <span className="text-text-secondary truncate flex-1">
-                                {risk.title}
-                              </span>
-                              <span
-                                className={cn(
-                                  'ml-2 shrink-0 px-1.5 py-0.5 rounded text-[10px] text-white',
-                                  riskLevelColors[risk.level]
+                              <div className="flex items-center justify-between gap-2">
+                                <div
+                                  onClick={() =>
+                                    navigate(
+                                      `/risks/${item.roomId}?riskId=${item.riskId}`
+                                    )
+                                  }
+                                  className="flex-1 min-w-0 cursor-pointer"
+                                >
+                                  <span className="text-xs text-text-secondary truncate block">
+                                    {risk?.title || '风险已移除'}
+                                  </span>
+                                </div>
+                                {risk && (
+                                  <span
+                                    className={cn(
+                                      'shrink-0 px-1.5 py-0.5 rounded text-[10px] text-white',
+                                      riskLevelColors[risk.level]
+                                    )}
+                                  >
+                                    {getRiskLevelText(risk.level)}
+                                  </span>
                                 )}
-                              >
-                                {getRiskLevelText(risk.level)}
-                              </span>
+                              </div>
+                              <div className="flex items-center justify-between mt-1.5">
+                                <span
+                                  className={cn(
+                                    'px-1.5 py-0.5 rounded text-[10px] text-white',
+                                    statusColors[item.status] || 'bg-gray-500'
+                                  )}
+                                >
+                                  {statusLabels[item.status] || '待处理'}
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleHandoverRiskStatus(
+                                        previousShiftHandover.id,
+                                        item.riskId,
+                                        'taken'
+                                      );
+                                    }}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20"
+                                    title="已接手"
+                                  >
+                                    接手
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleHandoverRiskStatus(
+                                        previousShiftHandover.id,
+                                        item.riskId,
+                                        'resolved'
+                                      );
+                                    }}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20"
+                                    title="已处理"
+                                  >
+                                    处理
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleHandoverRiskStatus(
+                                        previousShiftHandover.id,
+                                        item.riskId,
+                                        'suspended'
+                                      );
+                                    }}
+                                    className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/20"
+                                    title="挂起"
+                                  >
+                                    挂起
+                                  </button>
+                                </div>
+                              </div>
+                              {item.handlerName && (
+                                <p className="text-[10px] text-text-tertiary mt-1">
+                                  处理人：{item.handlerName}
+                                </p>
+                              )}
                             </div>
                           );
                         })}

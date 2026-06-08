@@ -53,6 +53,7 @@ const ProductsPage = () => {
 
   const params = new URLSearchParams(location.search);
   const productIdFromUrl = params.get('productId');
+  const oralIdFromUrl = params.get('oralId');
 
   const [currentProductId, setCurrentProductId] = useState<string | null>(
     productIdFromUrl || products.find((p) => p.status === 'explaining')?.id || null
@@ -70,6 +71,19 @@ const ProductsPage = () => {
       }
     }
   }, [productIdFromUrl, products]);
+
+  useEffect(() => {
+    if (oralIdFromUrl && oralBroadcasts.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(`oral-${oralIdFromUrl}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-purple-500');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-purple-500'), 2000);
+        }
+      }, 200);
+    }
+  }, [oralIdFromUrl, oralBroadcasts]);
   const [filterStatus, setFilterStatus] = useState<
     'all' | 'pending' | 'explaining' | 'explained'
   >('all');
@@ -499,7 +513,8 @@ const ProductsPage = () => {
                 oralBroadcasts.map((record) => (
                   <div
                     key={record.id}
-                    className="p-3 rounded-lg bg-bg-primary border border-border"
+                    id={`oral-${record.id}`}
+                    className="p-3 rounded-lg bg-bg-primary border border-border transition-all"
                   >
                     <div className="flex items-start gap-3">
                       <div className="shrink-0 w-8 h-8 rounded-full bg-purple-500/10 flex items-center justify-center">

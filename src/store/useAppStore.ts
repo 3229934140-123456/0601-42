@@ -32,6 +32,7 @@ interface AppState {
   setOperatorConclusion: (roomId: string, conclusion: string) => void;
   addShiftHandover: (handover: Omit<ShiftHandover, 'id' | 'createdAt'>) => void;
   getShiftHandovers: (date: string, shift?: string) => ShiftHandover[];
+  updateHandoverRiskStatus: (handoverId: string, riskId: string, status: string, handlerName?: string) => void;
   
   getRoomComments: (roomId: string) => Comment[];
   getRoomFrequentComments: (roomId: string) => typeof roomFrequentComments[string];
@@ -235,6 +236,10 @@ export const useAppStore = create<AppState>((set, get) => ({
           ...handover,
           id: `handover-${Date.now()}`,
           createdAt: new Date().toISOString(),
+          pendingRiskIds: handover.pendingRiskIds.map((item) => ({
+            ...item,
+            status: 'pending' as const,
+          })),
         },
       ],
     })),
@@ -246,6 +251,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
     return handovers;
   },
+
+  updateHandoverRiskStatus: (handoverId, riskId, status, handlerName) =>
+    set((state) => ({
+      shiftHandovers: state.shiftHandovers.map((h) => {
+        if (h.id !== handoverId) return h;
+        return {
+          ...h,
+          pendingRiskIds: h.pendingRiskIds.map((item) => {
+            if (item.riskId !== riskId) return item;
+            return {
+              ...item,
+              status: status as any,
+              handlerName: handlerName || item.handlerName,
+              handledAt: new Date().toISOString(),
+            };
+          }),
+        };
+      }),
+    })),
 
   getRoomComments: (roomId: string) => roomCommentsData[roomId] || [],
   getRoomFrequentComments: (roomId: string) => roomFrequentComments[roomId] || [],

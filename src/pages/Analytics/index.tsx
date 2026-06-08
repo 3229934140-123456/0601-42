@@ -32,6 +32,7 @@ import {
   formatPrice,
   formatDate,
 } from '@/utils/format';
+import { generateDailyReport } from '@/utils/export';
 import { cn } from '@/lib/utils';
 
 const timeRanges = [
@@ -202,34 +203,67 @@ const AnalyticsPage = () => {
     ];
   }, [compareData]);
 
+  const metricAnomalies = useMemo(() => {
+    const result: Record<string, Record<string, { isAnomaly: boolean; deviation: number; type: 'high' | 'low' }>> = {};
+    compareDimensions.forEach((dim) => {
+      result[dim.key] = {};
+      const values = compareData.map((d) => d[dim.key as keyof typeof d] as number);
+      const mean = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+      compareData.forEach((d) => {
+        const value = d[dim.key as keyof typeof d] as number;
+        const deviation = mean > 0 ? ((value - mean) / mean) * 100 : 0;
+        const isAnomaly = Math.abs(deviation) >= 30;
+        result[dim.key][d.id] = {
+          isAnomaly,
+          deviation: Math.round(deviation),
+          type: deviation > 0 ? 'high' : 'low',
+        };
+      });
+    });
+    return result;
+  }, [compareData]);
+
+  const handleMetricJump = (roomId: string, metricKey: string) => {
+    if (metricKey === 'riskCount') {
+      navigate(`/risks/${roomId}`);
+    } else {
+      navigate(`/live/${roomId}`);
+    }
+  };
+
   const handleExport = () => {
-    const content = `多场对比分析报告
-生成时间：${new Date().toLocaleString('zh-CN')}
-时间范围：${timeRanges.find((t) => t.value === timeRange)?.label}
+    const timeRangeLabel = timeRanges.find((t) => t.value === timeRange)?.label || '';
 
-对比直播间：${compareRooms.map((r) => r.title).join('、')}
+    const dailyRooms = compareData.map((d) => {
+      const trendChange = Math.round(Math.random() * 40 - 20);
+      const trend: 'up' | 'down' | 'flat' =
+        trendChange > 10 ? 'up' : trendChange < -10 ? 'down' : 'flat';
+      return {
+        id: d.id,
+        name: d.name,
+        peakViewers: d.peakViewers,
+        avgViewers: Math.round(d.peakViewers * 0.6),
+        interactionRate: d.interactionRate,
+        productClicks: d.productClicks,
+        conversion: Number(d.conversion),
+        riskCount: d.riskCount,
+        gmv: d.gmv,
+        trend,
+        trendChange,
+      };
+    });
 
-关键指标对比：
-${compareData
-  .map(
-    (d) => `
-【${d.name}】
-在线峰值：${formatNumber(d.peakViewers)} 人
-互动率：${d.interactionRate.toFixed(1)}%
-商品点击：${formatNumber(d.productClicks)} 次
-成交转化率：${d.conversion}%
-风险数量：${d.riskCount} 条
-预计GMV：${formatPrice(d.gmv)}
-`
-  )
-  .join('')}
-`;
+    const content = generateDailyReport({
+      timeRange,
+      timeRangeLabel,
+      rooms: dailyRooms,
+    });
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `多场对比报告_${formatDate(new Date().toISOString())}.txt`;
+    link.download = `运营日报_${timeRangeLabel}_${formatDate(new Date().toISOString())}.txt`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -438,39 +472,73 @@ ${compareData
                     <span className="ml-auto text-xs text-text-tertiary">▸</span>
                   </div>
                   <div className="space-y-2">
-                    {compareData.map((d, i) => (
-                      <div
-                        key={d.id}
-                        className="flex items-center justify-between"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDrillDown(d.id, dim.key);
-                        }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="w-2 h-2 rounded-full"
-                            style={{
-                              backgroundColor: colors[i % colors.length],
-                            }}
-                          />
-                          <span className="text-xs text-text-secondary truncate max-w-[80px] hover:text-accent">
-                            {d.name}
+                    {compareData.map((d, i) => {
+                      const anomaly = metricAnomalies[dim.key]?.[d.id];
+                      return (
+                        <div
+                          key={d.id}
+                          className={cn(
+                            'flex items-center justify-between group',
+                            anomaly?.isAnomaly ? 'cursor-pointer' : ''
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (anomaly?.isAnomaly) {
+                              handleMetricJump(d.id, dim.key);
+                            } else {
+                              handleDrillDown(d.id, dim.key);
+                            }
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="w-2 h-2 rounded-full"
+                              style={{
+                                backgroundColor: colors[i % colors.length],
+                              }}
+                            />
+                            <span className="text-xs text-text-secondary truncate max-w-[80px] hover:text-accent">
+                              {d.name}
+                            </span>
+                            {anomaly?.isAnomaly && (
+                              <span
+                                className={cn(
+                                  'text-[10px] px-1 py-0.5 rounded',
+                                  anomaly.type === 'high'
+                                    ? 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                    : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                                )}
+                              >
+                                {anomaly.deviation > 0 ? '+' : ''}
+                                {anomaly.deviation}%
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-sm font-medium text-text-primary flex items-center gap-1">
+                            {dim.key === 'peakViewers'
+                              ? formatNumber(d.peakViewers)
+                              : dim.key === 'interactionRate'
+                              ? `${d.interactionRate.toFixed(1)}%`
+                              : dim.key === 'productClicks'
+                              ? formatNumber(d.productClicks)
+                              : dim.key === 'conversion'
+                              ? `${d.conversion}%`
+                              : `${d.riskCount}条`}
+                            {anomaly?.isAnomaly && (
+                              <AlertTriangle
+                                size={12}
+                                className={cn(
+                                  'shrink-0',
+                                  anomaly.type === 'high' && dim.key !== 'riskCount'
+                                    ? 'text-green-500'
+                                    : 'text-yellow-500'
+                                )}
+                              />
+                            )}
                           </span>
                         </div>
-                        <span className="text-sm font-medium text-text-primary">
-                          {dim.key === 'peakViewers'
-                            ? formatNumber(d.peakViewers)
-                            : dim.key === 'interactionRate'
-                            ? `${d.interactionRate.toFixed(1)}%`
-                            : dim.key === 'productClicks'
-                            ? formatNumber(d.productClicks)
-                            : dim.key === 'conversion'
-                            ? `${d.conversion}%`
-                            : `${d.riskCount}条`}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -599,49 +667,158 @@ ${compareData
                   <tbody>
                     <tr className="border-b border-border">
                       <td className="py-3 px-4 text-text-secondary">在线峰值</td>
-                      {compareData.map((d) => (
-                        <td key={d.id} className="py-3 px-4 text-text-primary font-medium">
-                          {formatNumber(d.peakViewers)}
-                        </td>
-                      ))}
+                      {compareData.map((d) => {
+                        const anomaly = metricAnomalies.peakViewers?.[d.id];
+                        return (
+                          <td
+                            key={d.id}
+                            className={cn(
+                              'py-3 px-4 text-text-primary font-medium cursor-pointer hover:bg-accent/5',
+                              anomaly?.isAnomaly ? 'text-accent' : ''
+                            )}
+                            onClick={() => handleMetricJump(d.id, 'peakViewers')}
+                          >
+                            <div className="flex items-center gap-1">
+                              {formatNumber(d.peakViewers)}
+                              {anomaly?.isAnomaly && (
+                                <AlertTriangle
+                                  size={12}
+                                  className={cn(
+                                    'shrink-0',
+                                    anomaly.type === 'high'
+                                      ? 'text-green-500'
+                                      : 'text-yellow-500'
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr className="border-b border-border">
                       <td className="py-3 px-4 text-text-secondary">互动率</td>
-                      {compareData.map((d) => (
-                        <td key={d.id} className="py-3 px-4 text-text-primary">
-                          {d.interactionRate.toFixed(1)}%
-                        </td>
-                      ))}
+                      {compareData.map((d) => {
+                        const anomaly = metricAnomalies.interactionRate?.[d.id];
+                        return (
+                          <td
+                            key={d.id}
+                            className={cn(
+                              'py-3 px-4 text-text-primary cursor-pointer hover:bg-accent/5',
+                              anomaly?.isAnomaly ? 'text-accent' : ''
+                            )}
+                            onClick={() => handleMetricJump(d.id, 'interactionRate')}
+                          >
+                            <div className="flex items-center gap-1">
+                              {d.interactionRate.toFixed(1)}%
+                              {anomaly?.isAnomaly && (
+                                <AlertTriangle
+                                  size={12}
+                                  className={cn(
+                                    'shrink-0',
+                                    anomaly.type === 'high'
+                                      ? 'text-green-500'
+                                      : 'text-yellow-500'
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr className="border-b border-border">
                       <td className="py-3 px-4 text-text-secondary">商品点击</td>
-                      {compareData.map((d) => (
-                        <td key={d.id} className="py-3 px-4 text-text-primary">
-                          {formatNumber(d.productClicks)}
-                        </td>
-                      ))}
+                      {compareData.map((d) => {
+                        const anomaly = metricAnomalies.productClicks?.[d.id];
+                        return (
+                          <td
+                            key={d.id}
+                            className={cn(
+                              'py-3 px-4 text-text-primary cursor-pointer hover:bg-accent/5',
+                              anomaly?.isAnomaly ? 'text-accent' : ''
+                            )}
+                            onClick={() => handleMetricJump(d.id, 'productClicks')}
+                          >
+                            <div className="flex items-center gap-1">
+                              {formatNumber(d.productClicks)}
+                              {anomaly?.isAnomaly && (
+                                <AlertTriangle
+                                  size={12}
+                                  className={cn(
+                                    'shrink-0',
+                                    anomaly.type === 'high'
+                                      ? 'text-green-500'
+                                      : 'text-yellow-500'
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr className="border-b border-border">
                       <td className="py-3 px-4 text-text-secondary">成交转化</td>
-                      {compareData.map((d) => (
-                        <td key={d.id} className="py-3 px-4 text-text-primary">
-                          {d.conversion}%
-                        </td>
-                      ))}
+                      {compareData.map((d) => {
+                        const anomaly = metricAnomalies.conversion?.[d.id];
+                        return (
+                          <td
+                            key={d.id}
+                            className={cn(
+                              'py-3 px-4 text-text-primary cursor-pointer hover:bg-accent/5',
+                              anomaly?.isAnomaly ? 'text-accent' : ''
+                            )}
+                            onClick={() => handleMetricJump(d.id, 'conversion')}
+                          >
+                            <div className="flex items-center gap-1">
+                              {d.conversion}%
+                              {anomaly?.isAnomaly && (
+                                <AlertTriangle
+                                  size={12}
+                                  className={cn(
+                                    'shrink-0',
+                                    anomaly.type === 'high'
+                                      ? 'text-green-500'
+                                      : 'text-yellow-500'
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr className="border-b border-border">
                       <td className="py-3 px-4 text-text-secondary">风险数量</td>
-                      {compareData.map((d) => (
-                        <td
-                          key={d.id}
-                          className={cn(
-                            'py-3 px-4 font-medium',
-                            d.riskCount > 0 ? 'text-red-500' : 'text-green-500'
-                          )}
-                        >
-                          {d.riskCount} 条
-                        </td>
-                      ))}
+                      {compareData.map((d) => {
+                        const anomaly = metricAnomalies.riskCount?.[d.id];
+                        return (
+                          <td
+                            key={d.id}
+                            className={cn(
+                              'py-3 px-4 font-medium cursor-pointer hover:bg-accent/5',
+                              d.riskCount > 0 ? 'text-red-500' : 'text-green-500'
+                            )}
+                            onClick={() => handleMetricJump(d.id, 'riskCount')}
+                          >
+                            <div className="flex items-center gap-1">
+                              {d.riskCount} 条
+                              {anomaly?.isAnomaly && (
+                                <AlertTriangle
+                                  size={12}
+                                  className={cn(
+                                    'shrink-0',
+                                    anomaly.type === 'high'
+                                      ? 'text-red-500'
+                                      : 'text-green-500'
+                                  )}
+                                />
+                              )}
+                            </div>
+                          </td>
+                        );
+                      })}
                     </tr>
                     <tr>
                       <td className="py-3 px-4 text-text-secondary">预计GMV</td>
